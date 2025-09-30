@@ -16,22 +16,15 @@ import random
 import locale
 import gc
 import sys
- codex/list-files-in-repository-qr5eow
 
 import unicodedata
-import textwrap
- main
 import wave
 from array import array
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional, Callable, IO
 from queue import Queue, Empty
 from math import ceil
- codex/list-files-in-repository-qr5eow
-from PIL import Image, ImageFile, ImageDraw
-
 from PIL import Image, ImageFile, ImageDraw, ImageFont
-main
 
 # --- Configuração ---
 logger = logging.getLogger(__name__)
@@ -1559,17 +1552,13 @@ def _perform_final_pass(
         last_audio_stream = "[a_fadeout]"
     
     final_output_path = str(Path(params['output_folder']) / params['output_filename_single'])
- codex/list-files-in-repository-qr5eow
-    intro_context = _resolve_intro_text(params, params.get('current_language_code'))
-    if params.get('intro_enabled') and not intro_context:
-        progress_queue.put(("status", f"[{log_prefix}] Nenhum texto de introdução definido para este vídeo. Introdução ignorada.", "warning"))
-    output_without_intro = final_output_path if not intro_context else os.path.join(temp_dir, "final_sem_intro.mp4")
+    content_only_output_path = final_output_path
+    if intro_info:
+        content_only_output_path = os.path.join(
+            temp_dir,
+            f"main-content-{Path(params['output_filename_single']).stem}.mp4",
+        )
 
-
-    content_only_output_path = final_output_path if not intro_info else os.path.join(
-        temp_dir, f"main-content-{Path(params['output_filename_single']).stem}.mp4"
-    )
- main
     cmd_final = [params['ffmpeg_path'], '-y', *inputs]
     
     filter_complex_parts.append(f"{last_video_stream}format=yuv420p[vout]")
@@ -1602,46 +1591,25 @@ def _perform_final_pass(
     if not params.get('add_fade_out'):
         cmd_final.append("-shortest")
     
-    cmd_final.extend(['-movflags', '+faststart'])
- codex/list-files-in-repository-qr5eow
-    cmd_final.append(output_without_intro)
-
-    cmd_final.append(content_only_output_path)
-main
+    cmd_final.extend(['-movflags', '+faststart', content_only_output_path])
 
     def final_progress_callback(pct):
         progress_queue.put(("progress", pct))
 
     success = _execute_ffmpeg(cmd_final, total_duration, final_progress_callback, cancel_event, f"{log_prefix} (Final)", progress_queue)
-codex/list-files-in-repository-qr5eow
     if not success:
         return False
 
-    if intro_context:
-        intro_clip = _create_typing_intro_clip(intro_context['text'], (W, H), params, temp_dir, progress_queue, cancel_event, log_prefix)
-        if not intro_clip:
-            if output_without_intro != final_output_path and os.path.exists(output_without_intro):
-                shutil.move(output_without_intro, final_output_path)
-            return False
-        combined = _combine_intro_with_main(intro_clip, output_without_intro, final_output_path, params, progress_queue, cancel_event, log_prefix)
-        shutil.rmtree(intro_clip.get('temp_dir', ''), ignore_errors=True)
-        if not combined:
-            if output_without_intro != final_output_path and os.path.exists(output_without_intro):
-                shutil.move(output_without_intro, final_output_path)
-            return False
-        if output_without_intro != final_output_path and os.path.exists(output_without_intro):
-            os.remove(output_without_intro)
-        language_label = intro_context.get('language_label', 'Padrão')
-        progress_queue.put(("status", f"[{log_prefix}] Introdução digitada aplicada ({language_label}).", "info"))
+    if not intro_info:
+        return True
 
-    return True
-
-
-    if not success or not intro_info:
-        return success
-
-    return _combine_intro_with_main(intro_info, content_only_output_path, final_output_path, params, progress_queue, cancel_event, log_prefix)
-main
+    combined = _combine_intro_with_main(intro_info, content_only_output_path, final_output_path, params, progress_queue, cancel_event, log_prefix)
+    if combined and content_only_output_path != final_output_path and os.path.exists(content_only_output_path):
+        try:
+            os.remove(content_only_output_path)
+        except OSError:
+            pass
+    return combined
 
 def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, cancel_event: threading.Event, temp_dir: str) -> bool:
     if cancel_event.is_set(): return False
@@ -1740,14 +1708,12 @@ def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, c
         final_pass_params = {**params,
             'output_filename_single': f"video_final_{Path(audio_filename).stem}.mp4"
         }
- codex/list-files-in-repository-qr5eow
         final_pass_params['current_language_code'] = lang_code
 
         
         normalized_lang = _normalize_language_code(lang_code) or _normalize_language_code(language_name)
         if normalized_lang:
             final_pass_params['current_language_code'] = normalized_lang
-main
 
         final_success = _perform_final_pass(
             params=final_pass_params,
@@ -1863,13 +1829,11 @@ def _run_batch_image_processing(params: Dict[str, Any], progress_queue: Queue, c
             language_guess = _infer_language_code_from_name(Path(subtitle_file).stem)
 
         final_pass_params = {**params, 'output_filename_single': f"video_final_{Path(audio_filename).stem}.mp4"}
-codex/list-files-in-repository-qr5eow
         final_pass_params['current_language_code'] = language_guess
 
         inferred_lang = _infer_language_code_from_filename(audio_filename)
         if inferred_lang:
             final_pass_params['current_language_code'] = inferred_lang
-main
 
         final_success = _perform_final_pass(
             params=final_pass_params,
@@ -2026,13 +1990,11 @@ def _run_batch_mixed_processing(params: Dict[str, Any], progress_queue: Queue, c
             language_guess = _infer_language_code_from_name(Path(subtitle_file).stem)
 
         final_pass_params = {**params, 'output_filename_single': f"video_final_{Path(audio_filename).stem}.mp4"}
-codex/list-files-in-repository-qr5eow
         final_pass_params['current_language_code'] = language_guess
 
         inferred_lang = _infer_language_code_from_filename(audio_filename)
         if inferred_lang:
             final_pass_params['current_language_code'] = inferred_lang
-main
 
         _perform_final_pass(
             params=final_pass_params, base_video_path=base_video_path, narration_path=narration_path,
@@ -2176,14 +2138,12 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
             language_guess = _infer_language_code_from_name(Path(subtitle_file).stem)
 
         final_pass_params = {**params, 'output_filename_single': f"video_final_{audio_filepath.stem}.mp4"}
-codex/list-files-in-repository-qr5eow
         final_pass_params['current_language_code'] = language_guess
 
 
         inferred_lang = _infer_language_code_from_filename(audio_filepath.name)
         if inferred_lang:
             final_pass_params['current_language_code'] = inferred_lang
-main
 
         final_pass_params['mov_overlay_path'] = None
         final_pass_params['intro_phrase_text'] = ""
