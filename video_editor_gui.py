@@ -126,7 +126,7 @@ class ConfigManager:
     def load_config() -> Dict[str, Any]:
         default_config = {
             'ffmpeg_path': '', 'output_folder': str(Path.home() / "Videos"),
-            'last_download_folder': str(Path.home() / "Downloads"), 
+            'last_download_folder': str(Path.home() / "Downloads"),
             'last_video_folder': '', 'last_audio_folder': '', 'last_image_folder': '', 'last_srt_folder': '',
             'last_root_folder': '', 'last_png_folder': '', 'last_mixed_folder': '',
             'last_effect_folder': '', 'last_presenter_folder': '', 'video_codec': 'Automático', 'resolution': RESOLUTIONS[0],
@@ -143,12 +143,8 @@ class ConfigManager:
             'presenter_position': PRESENTER_POSITIONS[1], 'presenter_scale': 0.40,
             'presenter_chroma_enabled': False, 'presenter_chroma_color': '#00FF00',
             'presenter_chroma_similarity': 0.2, 'presenter_chroma_blend': 0.1, 'show_tech_logs': False,
- codex/list-files-in-repository-qr5eow
             'intro_enabled': False, 'intro_default_text': '', 'intro_texts': {},
-            'intro_language_code': 'auto',
-
-            'intro_enabled': False, 'intro_texts': {}, 'intro_default_text': '', 'single_language_code': 'auto',
- main
+            'intro_language_code': 'auto', 'single_language_code': 'auto',
         }
         try:
             if os.path.exists(CONFIG_FILE):
@@ -453,19 +449,15 @@ class VideoEditorApp:
         self.download_output_path_var = ttk.StringVar(value=self.config.get('last_download_folder', str(Path.home() / "Downloads")))
         self.download_format_var = ttk.StringVar(value="MP4")
 
- codex/list-files-in-repository-qr5eow
+        stored_intro_texts = self.config.get('intro_texts') or {}
+        self._intro_text_cache = dict(stored_intro_texts)
         self.intro_enabled_var = ttk.BooleanVar(value=self.config.get('intro_enabled', False))
         self.intro_default_text_var = ttk.StringVar(value=self.config.get('intro_default_text', ''))
         self.intro_language_var = ttk.StringVar(value=self.config.get('intro_language_code', 'auto'))
-        self._intro_text_cache = {k: v for k, v in (self.config.get('intro_texts') or {}).items()}
-
-        stored_intro_texts = self.config.get('intro_texts', {}) or {}
-        self.intro_enabled_var = ttk.BooleanVar(value=self.config.get('intro_enabled', False))
         self.intro_text_vars: Dict[str, ttk.StringVar] = {
             code: ttk.StringVar(value=stored_intro_texts.get(code, ''))
             for code in LANGUAGE_CODE_MAP.keys()
         }
-        self.intro_default_text_var = ttk.StringVar(value=self.config.get('intro_default_text', ''))
 
         stored_language_code = self.config.get('single_language_code', 'auto') or 'auto'
         if isinstance(stored_language_code, str) and stored_language_code.lower() != 'auto':
@@ -481,7 +473,6 @@ class VideoEditorApp:
         self.single_language_code_var = ttk.StringVar(value=stored_language_code)
         default_display = self.language_code_to_display.get(stored_language_code, self.language_code_to_display['auto'])
         self.single_language_display_var = ttk.StringVar(value=default_display)
- main
 
         self.path_vars = {
             'narration_single': self.narration_file_single, 'subtitle_single': self.subtitle_file_single,
@@ -1626,15 +1617,7 @@ class VideoEditorApp:
                                    'bold': self.subtitle_bold_var.get(), 'italic': self.subtitle_italic_var.get(), 'position': self.subtitle_position_var.get(),
                                    'font_file': self.subtitle_font_file.get(), 'position_map': SUBTITLE_POSITIONS}
         params['effect_blend_mode'] = EFFECT_BLEND_MODES.get(self.effect_blend_mode_var.get(), 'screen')
-        intro_texts = {}
-        for code, var in self.intro_text_vars.items():
-            text_value = var.get().strip()
-            if text_value:
-                intro_texts[code] = text_value
-
-        params['intro_texts'] = intro_texts
         params['intro_enabled'] = self.intro_enabled_var.get()
-        params['intro_default_text'] = self.intro_default_text_var.get().strip()
         single_language_code = self.single_language_code_var.get()
         if isinstance(single_language_code, str) and single_language_code.lower() != 'auto':
             single_language_code = single_language_code.upper()
@@ -1643,16 +1626,15 @@ class VideoEditorApp:
         params['single_language_code'] = single_language_code
         params['intro_phrase_enabled'] = False
         params['show_tech_logs'] = self.show_tech_logs_var.get()
-        params['intro_enabled'] = self.intro_enabled_var.get()
+        intro_default_text = self.intro_default_text_var.get()
         if hasattr(self, 'intro_default_text_widget'):
             default_state = self.intro_default_text_widget.cget("state")
             if default_state == 'disabled':
                 self.intro_default_text_widget.configure(state=NORMAL)
-            params['intro_default_text'] = self.intro_default_text_widget.get("1.0", "end").strip()
+            intro_default_text = self.intro_default_text_widget.get("1.0", "end").strip()
             if default_state == 'disabled':
                 self.intro_default_text_widget.configure(state=DISABLED)
-        else:
-            params['intro_default_text'] = self.intro_default_text_var.get()
+        params['intro_default_text'] = intro_default_text.strip()
         params['intro_language_code'] = self.intro_language_var.get()
         params['intro_texts'] = self._collect_intro_texts()
         logger.debug(f"Parâmetros finais coletados: {json.dumps(params, indent=2, default=str)}")
@@ -1961,15 +1943,10 @@ class VideoEditorApp:
             'presenter_chroma_blend': self.presenter_chroma_blend_var.get(),
             'show_tech_logs': self.show_tech_logs_var.get(),
             'intro_enabled': self.intro_enabled_var.get(),
- codex/list-files-in-repository-qr5eow
             'intro_default_text': intro_default_text,
             'intro_language_code': self.intro_language_var.get(),
             'intro_texts': self._collect_intro_texts(),
-
-            'intro_default_text': self.intro_default_text_var.get(),
-            'intro_texts': {code: var.get() for code, var in self.intro_text_vars.items()},
             'single_language_code': self.single_language_code_var.get(),
- main
         }
         ConfigManager.save_config(config_to_save)
         logger.info("Configuração guardada.")
