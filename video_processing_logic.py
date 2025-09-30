@@ -16,6 +16,7 @@ import random
 import locale
 import gc
 import sys
+import requests
 
 import unicodedata
 import wave
@@ -329,6 +330,45 @@ LANGUAGE_NAME_TO_CODE: Dict[str, str] = {
 }
 
 
+def _fallback_google_api_translate(text: str, translator_target: str) -> Optional[str]:
+    """Executa uma tradução utilizando a API pública do Google Translate."""
+
+    if not text or not translator_target:
+        return None
+
+    fallback_url = "https://translate.googleapis.com/translate_a/single"
+    params = {
+        "client": "gtx",
+        "sl": "auto",
+        "tl": translator_target,
+        "dt": "t",
+        "q": text,
+    }
+
+    try:
+        response = requests.get(fallback_url, params=params, timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:  # pragma: no cover - depende de serviço externo
+        logger.warning(
+            "Falha na tradução alternativa para %s via API pública: %s",
+            translator_target,
+            exc,
+        )
+        return None
+
+    if not isinstance(payload, list) or not payload:
+        return None
+
+    translated_segments = []
+    for segment in payload[0] or []:
+        if isinstance(segment, list) and segment:
+            translated_segments.append(str(segment[0]))
+
+    joined = "".join(translated_segments).strip()
+    return joined or None
+
+
 def _attempt_translate_text(text: str, target_code: Optional[str]) -> Tuple[Optional[str], bool]:
     """Tenta traduzir o texto para o código de idioma fornecido."""
 
@@ -336,18 +376,38 @@ def _attempt_translate_text(text: str, target_code: Optional[str]) -> Tuple[Opti
         return None, False
 
     translator_target = LANGUAGE_TRANSLATION_CODES.get(target_code)
-    if not translator_target or GoogleTranslator is None:
+    if not translator_target:
         return None, False
 
-    try:
-        translated = GoogleTranslator(source="auto", target=translator_target).translate(text)
+    cleaned_source = text.strip()
+
+    # Lista de métodos de tradução a serem tentados em ordem de prioridade
+    translators: List[Callable[[], Optional[str]]] = []
+
+    if GoogleTranslator is not None:
+        def _translate_with_deep_translator() -> Optional[str]:
+            try:
+                translated_value = GoogleTranslator(source="auto", target=translator_target).translate(text)
+                if translated_value:
+                    return str(translated_value)
+                return None
+            except Exception as exc:  # pragma: no cover - depende de serviço externo
+                logger.warning("Falha ao traduzir texto para %s: %s", target_code, exc)
+                return None
+
+        translators.append(_translate_with_deep_translator)
+
+    def _translate_with_fallback() -> Optional[str]:
+        return _fallback_google_api_translate(text, translator_target)
+
+    translators.append(_translate_with_fallback)
+
+    for translator in translators:
+        translated = translator()
         if translated and translated.strip():
             cleaned = translated.strip()
-            if cleaned != text.strip():
-                return cleaned, True
-            return cleaned, False
-    except Exception as exc:  # pragma: no cover - depende de serviço externo
-        logger.warning("Falha ao traduzir texto para %s: %s", target_code, exc)
+            return cleaned, cleaned != cleaned_source
+
     return None, False
 
 
