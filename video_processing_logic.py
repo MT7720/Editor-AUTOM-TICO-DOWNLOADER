@@ -1768,9 +1768,7 @@ def _perform_final_pass(
         progress_queue.put(("status", f"[{log_prefix}] AVISO: Não foi possível determinar a duração do conteúdo.", "warning"))
         content_duration = 1
     
-    total_duration = content_duration
-    if params.get('add_fade_out'):
-        total_duration += params.get('fade_out_duration', 10)
+    total_duration = content_duration or 0
 
     inputs = []
     filter_complex_parts = []
@@ -1941,9 +1939,15 @@ def _perform_final_pass(
 
     audio_args = ['-c:a', 'aac', '-b:a', '192k'] if last_audio_stream else ['-c:a', 'copy']
 
-    time_args = ["-t", str(total_duration)]
-    if not params.get('add_fade_out'):
-        time_args.append("-shortest")
+    time_args: List[str] = []
+    if total_duration > 0:
+        time_args.extend(["-t", f"{total_duration:.6f}"])
+
+    # Sempre força o encerramento assim que o insumo mais curto terminar.
+    # Isso evita travamentos quando usamos streams infinitos (ex.: stream_loop -1)
+    # para overlays e também quando o fade-out deixa o trecho final mais curto que
+    # as faixas auxiliares.
+    time_args.append("-shortest")
 
     output_args = ['-movflags', '+faststart', content_only_output_path]
 
