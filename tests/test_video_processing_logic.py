@@ -1,6 +1,8 @@
 import json
 import subprocess
 
+import pytest
+
 import video_processing_logic as v
 
 
@@ -62,3 +64,37 @@ def test_probe_media_properties_no_ffprobe(tmp_path):
     media.write_text("dummy")
 
     assert v._probe_media_properties(str(media), str(ffmpeg)) is None
+
+
+@pytest.mark.parametrize(
+    "alias, expected",
+    [
+        ("italiano", "ITA"),
+        ("Itáliano", "ITA"),
+        ("Português", "PT"),
+        ("en", "ING"),
+        ("español", "ESP"),
+        ("Français", "FRAN"),
+        ("Deutsch", "ALE"),
+        ("русский", "RUS"),
+        ("română", "ROM"),
+        ("polski", "POL"),
+        ("čeština", "CHEC"),
+        ("svenska", "SUE"),
+        ("日本語", "JAP"),
+        ("한국어", "KOR"),
+        ("中文", "CHI"),
+        ("العربية", "ARA"),
+        ("हिंदी", "HIN"),
+        ("ภาษาไทย", "THA"),
+        ("Tiếng Việt", "VIE"),
+        ("Català", "CAT"),
+    ],
+)
+def test_normalize_language_code_handles_aliases(alias, expected):
+    assert v._normalize_language_code(alias) == expected
+
+
+def test_translation_codes_cover_all_languages():
+    missing = {code for code in v.LANGUAGE_CODE_MAP if code not in v.LANGUAGE_TRANSLATION_CODES}
+    assert not missing, f"Faltam códigos de tradução para: {sorted(missing)}"
