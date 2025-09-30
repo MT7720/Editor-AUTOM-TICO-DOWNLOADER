@@ -852,17 +852,31 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
         try:
             for line in output_queue.get(timeout=0.1).split('\n'):
                 full_output += line + '\n'
-                if "out_time_ms=" in line:
-                    time_ms_str = line.split("=")[1].strip()
-                    if time_ms_str.isdigit():
-                        current_time_sec = int(time_ms_str) / 1_000_000
-                        if duration > 0:
-                            progress_pct = min(current_time_sec / duration, 1.0)
-                            if progress_callback:
-                                progress_callback(progress_pct)
-                            if progress_pct - last_reported_pct >= 0.01:
-                               progress_queue.put(("status", f"[{log_prefix}] {int(progress_pct*100)}% concluído", "info"))
-                               last_reported_pct = progress_pct
+                stripped = line.strip()
+                if "out_time_ms=" in stripped or "out_time_us=" in stripped or stripped.startswith("out_time="):
+                    key, _, value = stripped.partition("=")
+                    key = key.strip()
+                    value = value.strip()
+
+                    current_time_sec = None
+                    if key == "out_time_ms" and value.isdigit():
+                        current_time_sec = int(value) / 1_000_000
+                    elif key == "out_time_us" and value.isdigit():
+                        current_time_sec = int(value) / 1_000_000
+                    elif key == "out_time" and value:
+                        try:
+                            h, m, s = value.split(":")
+                            current_time_sec = int(h) * 3600 + int(m) * 60 + float(s)
+                        except ValueError:
+                            current_time_sec = None
+
+                    if current_time_sec is not None and duration > 0:
+                        progress_pct = min(current_time_sec / duration, 1.0)
+                        if progress_callback:
+                            progress_callback(progress_pct)
+                        if progress_pct - last_reported_pct >= 0.01:
+                            progress_queue.put(("status", f"[{log_prefix}] {int(progress_pct*100)}% concluído", "info"))
+                            last_reported_pct = progress_pct
                 else:
                     stripped_line = line.strip()
                     if stripped_line:
