@@ -1,0 +1,156 @@
+{
+  "data": {
+    "id": "33a36acc-e19f-4d32-a65b-4a177e783eb4",
+    "type": "licenses",
+    "attributes": {
+      "name": "teste",
+      "key": "RX7R-7NNC-FK4H-FANM-C9K3-P3M3-4YYP-WHHN",
+      "expiry": "2025-06-30T00:00:00.000Z",
+      "status": "ACTIVE",
+      "uses": 0,
+      "suspended": false,
+      "scheme": null,
+      "encrypted": false,
+      "strict": false,
+      "floating": true,
+      "protected": true,
+      "version": null,
+      "maxMachines": 1,
+      "maxProcesses": null,
+      "maxUsers": null,
+      "maxCores": null,
+      "maxUses": null,
+      "requireHeartbeat": false,
+      "requireCheckIn": false,
+      "lastValidated": "2025-06-26T17:20:35.205Z",
+      "lastCheckIn": null,
+      "nextCheckIn": null,
+      "lastCheckOut": null,
+      "permissions": [
+        "arch.read",
+        "artifact.read",
+        "channel.read",
+        "component.create",
+        "component.delete",
+        "component.read",
+        "component.update",
+        "constraint.read",
+        "engine.read",
+        "entitlement.read",
+        "group.owners.read",
+        "group.read",
+        "license.check-in",
+        "license.check-out",
+        "license.read",
+        "license.usage.increment",
+        "license.validate",
+        "machine.check-out",
+        "machine.create",
+        "machine.delete",
+        "machine.heartbeat.ping",
+        "machine.proofs.generate",
+        "machine.read",
+        "machine.update",
+        "package.read",
+        "platform.read",
+        "process.create",
+        "process.delete",
+        "process.heartbeat.ping",
+        "process.read",
+        "process.update",
+        "release.download",
+        "release.read",
+        "release.upgrade",
+        "token.read",
+        "token.regenerate",
+        "token.revoke"
+      ],
+      "metadata": {},
+      "created": "2025-06-26T17:20:31.448Z",
+      "updated": "2025-06-26T17:20:31.448Z"
+    },
+    "relationships": {
+      "account": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352"
+        },
+        "data": {
+          "type": "accounts",
+          "id": "9798e344-f107-4cfd-bc83-af9b8e75d352"
+        }
+      },
+      "environment": {
+        "links": {
+          "related": null
+        },
+        "data": null
+      },
+      "product": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/product"
+        },
+        "data": {
+          "type": "products",
+          "id": "c8d1acab-a138-46a8-a92d-5d28f3c69da0"
+        }
+      },
+      "policy": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/policy"
+        },
+        "data": {
+          "type": "policies",
+          "id": "8b947647-e0ee-4f10-bf93-d2d65813e082"
+        }
+      },
+      "group": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/group"
+        },
+        "data": null
+      },
+      "owner": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/owner"
+        },
+        "data": null
+      },
+      "users": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/users"
+        },
+        "meta": {
+          "count": 0
+        }
+      },
+      "machines": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/machines"
+        },
+        "meta": {
+          "cores": 0,
+          "count": 0
+        }
+      },
+      "tokens": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/tokens"
+        }
+      },
+      "entitlements": {
+        "links": {
+          "related": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4/entitlements"
+        }
+      }
+    },
+    "links": {
+      "self": "/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352/licenses/33a36acc-e19f-4d32-a65b-4a177e783eb4"
+    }
+  },
+  "meta": {
+    "ts": "2025-06-26T17:20:35.207Z",
+    "valid": true,
+    "detail": "is valid",
+    "code": "VALID"
+  }
+}
