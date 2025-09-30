@@ -454,10 +454,6 @@ class VideoEditorApp:
         self.intro_enabled_var = ttk.BooleanVar(value=self.config.get('intro_enabled', False))
         self.intro_default_text_var = ttk.StringVar(value=self.config.get('intro_default_text', ''))
         self.intro_language_var = ttk.StringVar(value=self.config.get('intro_language_code', 'auto'))
-        self.intro_text_vars: Dict[str, ttk.StringVar] = {
-            code: ttk.StringVar(value=stored_intro_texts.get(code, ''))
-            for code in LANGUAGE_CODE_MAP.keys()
-        }
 
         stored_language_code = self.config.get('single_language_code', 'auto') or 'auto'
         if isinstance(stored_language_code, str) and stored_language_code.lower() != 'auto':
@@ -615,57 +611,12 @@ class VideoEditorApp:
         rb2.pack(side=LEFT, padx=(0, 15))
         ToolTip(rb2, "Uma nova música aleatória da pasta será selecionada para cada vídeo no lote. Se a narração for longa, várias músicas serão usadas em sequência.")
 
-        intro_section = ttk.LabelFrame(tab, text=" Introdução com Texto Digitado ", padding=15)
-        intro_section.grid(row=4, column=0, sticky="ew", pady=(0, 15))
-        intro_section.columnconfigure(1, weight=1)
-
-        ttk.Checkbutton(
-            intro_section,
-            text="Ativar introdução digitada antes do conteúdo",
-            variable=self.intro_enabled_var,
-            command=self._update_intro_section_state
-        ).grid(row=0, column=0, columnspan=2, sticky="w")
-
-        ttk.Label(intro_section, text="Idioma para vídeos únicos/slideshow:").grid(row=1, column=0, sticky="w", pady=(10, 2))
-        self.single_language_combobox = ttk.Combobox(
-            intro_section,
-            textvariable=self.single_language_display_var,
-            state="readonly",
-            values=list(self.language_code_to_display.values())
-        )
-        self.single_language_combobox.grid(row=1, column=1, sticky="ew", pady=(10, 2))
-        self.single_language_combobox.bind("<<ComboboxSelected>>", self._on_single_language_selected)
-
-        ttk.Label(intro_section, text="Texto padrão (quando o idioma não estiver configurado):").grid(row=2, column=0, sticky="w", pady=(10, 2))
-        self.intro_default_entry = ttk.Entry(intro_section, textvariable=self.intro_default_text_var)
-        self.intro_default_entry.grid(row=2, column=1, sticky="ew", pady=(10, 2))
-
-        languages_frame = ttk.Frame(intro_section)
-        languages_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        languages_frame.columnconfigure(1, weight=1)
-
-        self.intro_text_entries = []
-        for idx, (code, name) in enumerate(LANGUAGE_CODE_MAP.items()):
-            ttk.Label(languages_frame, text=f"{name} ({code}):").grid(row=idx, column=0, sticky="w", padx=(0, 10), pady=2)
-            entry = ttk.Entry(languages_frame, textvariable=self.intro_text_vars[code])
-            entry.grid(row=idx, column=1, sticky="ew", pady=2)
-            self.intro_text_entries.append(entry)
-
-        self._update_intro_section_state()
-
         # --- Ações e Progresso (Grid row atualizado) ---
-        self._create_editor_process_section(tab, 5)
+        self._create_editor_process_section(tab, 4)
 
     def _on_single_language_selected(self, event=None):
         display_value = self.single_language_display_var.get()
         self.single_language_code_var.set(self.language_display_to_code.get(display_value, 'auto'))
-
-    def _update_intro_section_state(self):
-        state = NORMAL if self.intro_enabled_var.get() else DISABLED
-        if hasattr(self, 'intro_default_entry'):
-            self.intro_default_entry.config(state=state)
-        for entry in getattr(self, 'intro_text_entries', []):
-            entry.config(state=state)
 
     def _create_video_tab(self):
         # ... (sem alterações) ...
@@ -738,19 +689,19 @@ class VideoEditorApp:
         helper_box = ttk.LabelFrame(tab, text=" Como funciona? ", padding=15)
         helper_box.grid(row=0, column=0, sticky="ew", pady=(0, 15))
         helper_text = (
-            "1. Ative a introdução digitada para que o editor gere um clipe com fundo preto e animação de digitação.\n"
-            "2. Escolha o idioma principal para renderizações únicas ou deixe em Automático para usar o idioma detectado no lote.\n"
-            "3. Preencha o texto padrão e personalize apenas os idiomas necessários: cada vídeo só exibirá o texto configurado para ele."
+            "• Ligue a introdução digitada para gerar um pequeno clipe com o texto antes do conteúdo.\n"
+            "• Defina o idioma para execuções manuais e o comportamento automático para lotes.\n"
+            "• Escreva um texto padrão e personalize apenas os idiomas necessários."
         )
-        ttk.Label(helper_box, text=helper_text, justify=LEFT, wraplength=760).grid(row=0, column=0, sticky="w")
+        ttk.Label(helper_box, text=helper_text, justify=LEFT, wraplength=780).grid(row=0, column=0, sticky="w")
 
-        settings_box = ttk.LabelFrame(tab, text=" Configurações principais ", padding=15)
+        settings_box = ttk.LabelFrame(tab, text=" Passo a passo ", padding=15)
         settings_box.grid(row=1, column=0, sticky="ew", pady=(0, 15))
         settings_box.columnconfigure(1, weight=1)
 
         self.intro_enabled_check = ttk.Checkbutton(
             settings_box,
-            text="Ativar introdução digitada com áudio sincronizado",
+            text="1) Ativar introdução digitada com áudio sincronizado",
             variable=self.intro_enabled_var,
             bootstyle="round-toggle",
             command=self._refresh_intro_state
@@ -758,7 +709,21 @@ class VideoEditorApp:
         self.intro_enabled_check.grid(row=0, column=0, columnspan=2, sticky="w")
         ToolTip(self.intro_enabled_check, "Quando ligado, cada renderização começará com o texto digitado antes do conteúdo principal.")
 
-        ttk.Label(settings_box, text="Idioma para vídeos únicos:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(12, 5))
+        single_language_frame = ttk.Frame(settings_box)
+        single_language_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(12, 5))
+        single_language_frame.columnconfigure(1, weight=1)
+        ttk.Label(single_language_frame, text="2) Idioma preferido para vídeos únicos/slideshow:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        self.single_language_combobox = ttk.Combobox(
+            single_language_frame,
+            textvariable=self.single_language_display_var,
+            state="readonly",
+            values=list(self.language_code_to_display.values())
+        )
+        self.single_language_combobox.grid(row=0, column=1, sticky="ew")
+        self.single_language_combobox.bind("<<ComboboxSelected>>", self._on_single_language_selected)
+        ttk.Label(single_language_frame, text="Escolha o idioma manualmente ou deixe em Automático para detectar pelo arquivo.", bootstyle="secondary", wraplength=760).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
+        ttk.Label(settings_box, text="3) Idioma padrão para vídeos em lote:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=(12, 5))
         self._intro_language_choices = [("auto", "Automático (usar idioma do vídeo)")]
         for code, label in LANGUAGE_CODE_MAP.items():
             self._intro_language_choices.append((code, f"{label} ({code})"))
@@ -770,21 +735,23 @@ class VideoEditorApp:
             state="readonly",
             values=[label for _, label in self._intro_language_choices]
         )
-        self.intro_language_combobox.grid(row=1, column=1, sticky="ew", pady=(12, 5))
+        self.intro_language_combobox.grid(row=2, column=1, sticky="ew", pady=(12, 5))
         self.intro_language_combobox.bind("<<ComboboxSelected>>", lambda event: self._on_intro_language_selected())
+        ttk.Label(settings_box, text="Quando automático, cada vídeo usa o texto configurado para o idioma detectado.", bootstyle="secondary", wraplength=760).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        ttk.Label(settings_box, text="Texto padrão (usado quando não há idioma específico):").grid(row=2, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        ttk.Label(settings_box, text="4) Texto padrão (usado quando não há idioma específico):").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
         self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=4, wrap="word")
-        self.intro_default_text_widget.grid(row=3, column=0, columnspan=2, sticky="ew")
+        self.intro_default_text_widget.grid(row=5, column=0, columnspan=2, sticky="ew")
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
 
         per_language_box = ttk.LabelFrame(tab, text=" Textos personalizados por idioma ", padding=15)
         per_language_box.grid(row=2, column=0, sticky="nsew")
         per_language_box.columnconfigure(1, weight=1)
         tab.rowconfigure(2, weight=1)
+        ttk.Label(per_language_box, text="Preencha somente os idiomas que precisam de texto especial. Os demais usarão o texto padrão.", bootstyle="secondary", wraplength=780).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         self.intro_text_inputs: Dict[str, scrolledtext.ScrolledText] = {}
-        for row_idx, (code, label) in enumerate(LANGUAGE_CODE_MAP.items()):
+        for row_idx, (code, label) in enumerate(LANGUAGE_CODE_MAP.items(), start=1):
             ttk.Label(per_language_box, text=f"{label} ({code}):", anchor="w").grid(row=row_idx, column=0, sticky="nw", padx=(0, 10), pady=5)
             txt = scrolledtext.ScrolledText(per_language_box, height=3, width=40, wrap="word")
             txt.grid(row=row_idx, column=1, sticky="ew", pady=5)
@@ -815,6 +782,8 @@ class VideoEditorApp:
     def _refresh_intro_state(self):
         enabled = self.intro_enabled_var.get()
         state = NORMAL if enabled else DISABLED
+        if hasattr(self, 'single_language_combobox'):
+            self.single_language_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_language_combobox'):
             self.intro_language_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_default_text_widget'):
@@ -822,8 +791,6 @@ class VideoEditorApp:
         if hasattr(self, 'intro_text_inputs'):
             for widget in self.intro_text_inputs.values():
                 widget.configure(state=state)
-        if not enabled and hasattr(self, 'intro_default_text_widget'):
-            self.intro_default_text_widget.configure(state=state)
 
     def _collect_intro_texts(self) -> Dict[str, str]:
         texts: Dict[str, str] = {}
