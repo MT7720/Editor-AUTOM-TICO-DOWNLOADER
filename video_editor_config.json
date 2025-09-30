@@ -43,5 +43,5 @@
   "intro_enabled": false,
   "intro_default_text": "",
   "intro_texts": {},
-  "single_language_code": "auto"
+  "intro_language_code": "auto"
 }
