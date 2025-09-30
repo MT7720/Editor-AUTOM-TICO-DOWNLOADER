@@ -862,6 +862,9 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
     stall_warning_interval = 15.0
     stall_abort_threshold = 120.0
     last_activity_time = time.monotonic()
+    last_progress_time = last_activity_time
+    last_progress_pct = 0.0
+    progress_updates_seen = False
     last_warning_bucket = 0
     stalled = False
     last_nonempty_line = ""
@@ -898,6 +901,13 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
 
                     if current_time_sec is not None and duration > 0:
                         progress_pct = min(current_time_sec / duration, 1.0)
+                        if (
+                            progress_pct > last_progress_pct + 1e-6
+                            or (progress_pct >= 1.0 and last_progress_pct < 1.0)
+                        ):
+                            last_progress_time = time.monotonic()
+                            last_progress_pct = progress_pct
+                            progress_updates_seen = True
                         if progress_callback:
                             progress_callback(progress_pct)
                         if progress_pct - last_reported_pct >= 0.01:
@@ -909,22 +919,35 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
                         last_nonempty_line = stripped_line
                         logger.debug(f"[{log_prefix}/ffmpeg] {stripped_line}")
         except Empty:
-            elapsed = time.monotonic() - last_activity_time
+            now = time.monotonic()
+            elapsed = now - last_activity_time
+            progress_elapsed = (
+                now - last_progress_time if progress_updates_seen else elapsed
+            )
+
+            stall_elapsed = None
             if elapsed >= stall_abort_threshold:
+                stall_elapsed = elapsed
+            elif progress_elapsed >= stall_abort_threshold:
+                stall_elapsed = progress_elapsed
+
+            if stall_elapsed is not None:
                 stalled = True
                 logger.warning(
-                    f"[{log_prefix}] Sem progresso por {int(elapsed)}s. "
+                    f"[{log_prefix}] Sem progresso por {int(stall_elapsed)}s. "
                     f"Abortando processo FFmpeg {process.pid} por possível travamento."
                 )
+                stall_detail = last_nonempty_line or "Nenhuma mensagem adicional do FFmpeg."
                 progress_queue.put((
                     "status",
-                    f"[{log_prefix}] Nenhum progresso há {int(elapsed)}s. Abortando renderização atual...",
+                    f"[{log_prefix}] Nenhum progresso há {int(stall_elapsed)}s. "
+                    f"Última saída conhecida: {stall_detail}. Abortando renderização atual...",
                     "warning",
                 ))
                 process.terminate()
                 break
 
-            warning_elapsed = elapsed - stall_warning_threshold
+            warning_elapsed = progress_elapsed - stall_warning_threshold
             if warning_elapsed >= 0:
                 warning_bucket = int(warning_elapsed // stall_warning_interval) + 1
                 if warning_bucket > last_warning_bucket:
