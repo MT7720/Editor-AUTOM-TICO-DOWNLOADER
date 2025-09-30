@@ -449,8 +449,6 @@ class VideoEditorApp:
         self.download_output_path_var = ttk.StringVar(value=self.config.get('last_download_folder', str(Path.home() / "Downloads")))
         self.download_format_var = ttk.StringVar(value="MP4")
 
-        stored_intro_texts = self.config.get('intro_texts') or {}
-        self._intro_text_cache = dict(stored_intro_texts)
         self.intro_enabled_var = ttk.BooleanVar(value=self.config.get('intro_enabled', False))
         self.intro_default_text_var = ttk.StringVar(value=self.config.get('intro_default_text', ''))
         self.intro_language_var = ttk.StringVar(value=self.config.get('intro_language_code', 'auto'))
@@ -690,8 +688,8 @@ class VideoEditorApp:
         helper_box.grid(row=0, column=0, sticky="ew", pady=(0, 15))
         helper_text = (
             "• Ligue a introdução digitada para gerar um pequeno clipe com o texto antes do conteúdo.\n"
-            "• Defina o idioma para execuções manuais e o comportamento automático para lotes.\n"
-            "• Escreva um texto padrão e personalize apenas os idiomas necessários."
+            "• Escreva o texto uma única vez e nós traduziremos automaticamente para o idioma do vídeo.\n"
+            "• Ajuste o idioma preferido apenas se precisar forçar um idioma específico."
         )
         ttk.Label(helper_box, text=helper_text, justify=LEFT, wraplength=780).grid(row=0, column=0, sticky="w")
 
@@ -739,29 +737,12 @@ class VideoEditorApp:
         self.intro_language_combobox.bind("<<ComboboxSelected>>", lambda event: self._on_intro_language_selected())
         ttk.Label(settings_box, text="Quando automático, cada vídeo usa o texto configurado para o idioma detectado.", bootstyle="secondary", wraplength=760).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        ttk.Label(settings_box, text="4) Texto padrão (usado quando não há idioma específico):").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
-        self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=4, wrap="word")
+        ttk.Label(settings_box, text="4) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=6, wrap="word")
         self.intro_default_text_widget.grid(row=5, column=0, columnspan=2, sticky="ew")
+        settings_box.rowconfigure(5, weight=1)
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
-
-        per_language_box = ttk.LabelFrame(tab, text=" Textos personalizados por idioma ", padding=15)
-        per_language_box.grid(row=2, column=0, sticky="nsew")
-        per_language_box.columnconfigure(1, weight=1)
         tab.rowconfigure(2, weight=1)
-        ttk.Label(per_language_box, text="Preencha somente os idiomas que precisam de texto especial. Os demais usarão o texto padrão.", bootstyle="secondary", wraplength=780).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
-
-        self.intro_text_inputs: Dict[str, scrolledtext.ScrolledText] = {}
-        for row_idx, (code, label) in enumerate(LANGUAGE_CODE_MAP.items(), start=1):
-            ttk.Label(per_language_box, text=f"{label} ({code}):", anchor="w").grid(row=row_idx, column=0, sticky="nw", padx=(0, 10), pady=5)
-            txt = scrolledtext.ScrolledText(per_language_box, height=3, width=40, wrap="word")
-            txt.grid(row=row_idx, column=1, sticky="ew", pady=5)
-            existing = self._intro_text_cache.get(code, "")
-            if not existing and code.lower() in self._intro_text_cache:
-                existing = self._intro_text_cache.get(code.lower(), "")
-            if existing:
-                txt.insert("1.0", existing)
-            self.intro_text_inputs[code] = txt
-
         self._set_intro_language_display_from_code(self.intro_language_var.get())
         self._refresh_intro_state()
 
@@ -788,24 +769,9 @@ class VideoEditorApp:
             self.intro_language_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_default_text_widget'):
             self.intro_default_text_widget.configure(state=state)
-        if hasattr(self, 'intro_text_inputs'):
-            for widget in self.intro_text_inputs.values():
-                widget.configure(state=state)
 
     def _collect_intro_texts(self) -> Dict[str, str]:
-        texts: Dict[str, str] = {}
-        if not hasattr(self, 'intro_text_inputs'):
-            return texts
-        for code, widget in self.intro_text_inputs.items():
-            previous_state = widget.cget("state")
-            if previous_state == 'disabled':
-                widget.configure(state=NORMAL)
-            value = widget.get("1.0", "end").strip()
-            if previous_state == 'disabled':
-                widget.configure(state=DISABLED)
-            if value:
-                texts[code] = value
-        return texts
+        return {}
 
     def _create_effects_tab(self):
         # ... (sem alterações) ...
