@@ -641,6 +641,10 @@ class VideoEditorApp:
         settings_section.grid(row=1, column=0, sticky="ew", pady=(20, 0))
         settings_section.columnconfigure(1, weight=1)
 
+        # Widgets que mudam de estado conforme a introdução está ativa ou não.
+        # Guardamos o tipo para aplicar o estado correto (combobox precisa de 'readonly').
+        self.intro_state_widgets = []
+
         self.intro_toggle = ttk.Checkbutton(
             settings_section,
             text="Ativar introdução digitada antes do conteúdo",
@@ -660,10 +664,12 @@ class VideoEditorApp:
         self.single_language_combobox.grid(row=1, column=1, sticky="ew", pady=(10, 2))
         self.single_language_combobox.bind("<<ComboboxSelected>>", self._on_single_language_selected)
         ToolTip(self.single_language_combobox, "Selecione qual idioma usar quando estiver renderizando apenas um vídeo.")
+        self.intro_state_widgets.append((self.single_language_combobox, "combobox"))
 
         ttk.Label(settings_section, text="Texto padrão (usado quando o idioma não estiver configurado abaixo):").grid(row=2, column=0, sticky="w", pady=(10, 2))
         self.intro_default_entry = ttk.Entry(settings_section, textvariable=self.intro_default_text_var)
         self.intro_default_entry.grid(row=2, column=1, sticky="ew", pady=(10, 2))
+        self.intro_state_widgets.append((self.intro_default_entry, "entry"))
 
         languages_section = ttk.LabelFrame(tab, text=" Textos por idioma ", padding=15)
         languages_section.grid(row=2, column=0, sticky="ew", pady=(20, 0))
@@ -682,6 +688,7 @@ class VideoEditorApp:
             entry = ttk.Entry(languages_section, textvariable=self.intro_text_vars[code])
             entry.grid(row=idx, column=1, sticky="ew", pady=2)
             self.intro_text_entries.append(entry)
+            self.intro_state_widgets.append((entry, "entry"))
 
         self._update_intro_section_state()
 
@@ -690,14 +697,16 @@ class VideoEditorApp:
         self.single_language_code_var.set(self.language_display_to_code.get(display_value, 'auto'))
 
     def _update_intro_section_state(self):
-        state = NORMAL if self.intro_enabled_var.get() else DISABLED
-        if hasattr(self, 'single_language_combobox'):
-            combo_state = 'readonly' if state == NORMAL else 'disabled'
-            self.single_language_combobox.config(state=combo_state)
-        if hasattr(self, 'intro_default_entry'):
-            self.intro_default_entry.config(state=state)
-        for entry in getattr(self, 'intro_text_entries', []):
-            entry.config(state=state)
+        enabled = bool(self.intro_enabled_var.get())
+        entry_state = NORMAL if enabled else DISABLED
+        combo_state = 'readonly' if enabled else 'disabled'
+
+        for widget, kind in getattr(self, 'intro_state_widgets', []):
+            target_state = combo_state if kind == "combobox" else entry_state
+            try:
+                widget.config(state=target_state)
+            except tk.TclError:
+                widget.configure(state=target_state)
 
     def _create_video_tab(self):
         # ... (sem alterações) ...
