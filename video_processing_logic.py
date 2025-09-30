@@ -26,6 +26,11 @@ from queue import Queue, Empty
 from math import ceil
 from PIL import Image, ImageFile, ImageDraw, ImageFont
 
+try:
+    from deep_translator import GoogleTranslator  # type: ignore
+except Exception:  # pragma: no cover - biblioteca externa opcional
+    GoogleTranslator = None
+
 # --- Configuração ---
 logger = logging.getLogger(__name__)
 ImageFile.LOAD_TRUNCATED_IMAGES = True # Permite carregar imagens truncadas
@@ -78,28 +83,51 @@ LANGUAGE_ALIASES: Dict[str, str] = {
     "DUTCH": "HOLAND",
 }
 
-def _normalize_language_code(value: Optional[str]) -> Optional[str]:
-    if not value:
-        return None
-    normalized = str(value).strip().upper()
-    if not normalized:
-        return None
-    if normalized in LANGUAGE_CODE_MAP:
-        return normalized
-    normalized = LANGUAGE_ALIASES.get(normalized, normalized)
-    return normalized if normalized in LANGUAGE_CODE_MAP else None
+LANGUAGE_TRANSLATION_CODES: Dict[str, str] = {
+    "PT": "pt",
+    "ING": "en",
+    "ESP": "es",
+    "FRAN": "fr",
+    "BUL": "bg",
+    "ROM": "ro",
+    "ALE": "de",
+    "GREGO": "el",
+    "ITA": "it",
+    "POL": "pl",
+    "HOLAND": "nl",
+}
 
 
-def _infer_language_code_from_name(name: str) -> Optional[str]:
-    tokens = re.split(r"[\s._-]+", name) if name else []
-    for token in tokens:
-        normalized = _normalize_language_code(token)
-        if normalized:
-            return normalized
-    return None
+def _attempt_translate_text(text: str, target_code: Optional[str]) -> Tuple[Optional[str], bool]:
+    """Tenta traduzir o texto para o código de idioma fornecido."""
+
+    if not text or not target_code:
+        return None, False
+
+    translator_target = LANGUAGE_TRANSLATION_CODES.get(target_code)
+    if not translator_target or GoogleTranslator is None:
+        return None, False
+
+    try:
+        translated = GoogleTranslator(source="auto", target=translator_target).translate(text)
+        if translated and translated.strip():
+            cleaned = translated.strip()
+            if cleaned != text.strip():
+                return cleaned, True
+            return cleaned, False
+    except Exception as exc:  # pragma: no cover - depende de serviço externo
+        logger.warning("Falha ao traduzir texto para %s: %s", target_code, exc)
+    return None, False
 
 
-def _resolve_intro_text(params: Dict[str, Any], language_hint: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def _prepare_intro_text(
+    params: Dict[str, Any],
+    language_hint: Optional[str] = None,
+    progress_queue: Optional[Queue] = None,
+    log_prefix: str = ""
+) -> Optional[Dict[str, Any]]:
+    """Seleciona e traduz (se necessário) o texto de introdução apropriado."""
+
     if not params.get('intro_enabled'):
         return None
 
@@ -123,18 +151,82 @@ def _resolve_intro_text(params: Dict[str, Any], language_hint: Optional[str] = N
         or _normalize_language_code(params.get('intro_language_code'))
     )
 
-    text_to_use = intro_texts.get(selected_language) if selected_language else None
-    if not text_to_use:
-        text_to_use = default_text or next(iter(intro_texts.values()), '')
-    if not text_to_use:
+    translation_applied = False
+    base_language_code: Optional[str] = None
+    base_text: str = ""
+
+    if default_text:
+        base_text = default_text
+    elif intro_texts:
+        base_language_code, base_text = next(iter(intro_texts.items()))
+
+    if selected_language and selected_language in intro_texts:
+        text_to_use = intro_texts[selected_language]
+        final_language = selected_language
+        language_label = LANGUAGE_CODE_MAP.get(final_language)
+    elif base_text:
+        text_to_use = base_text
+        final_language = base_language_code
+        language_label = (
+            LANGUAGE_CODE_MAP.get(base_language_code)
+            if base_language_code
+            else "Padrão"
+        )
+        if selected_language:
+            translated, translation_applied = _attempt_translate_text(base_text, selected_language)
+            if translated:
+                text_to_use = translated
+                final_language = selected_language
+                language_label = LANGUAGE_CODE_MAP.get(selected_language, "Padrão")
+                if translation_applied:
+                    language_label = f"{language_label} (traduzido)"
+            elif progress_queue is not None and base_language_code != selected_language:
+                progress_queue.put((
+                    "status",
+                    f"[{log_prefix}] Não foi possível traduzir a introdução para {LANGUAGE_CODE_MAP.get(selected_language, selected_language)}. Texto padrão será usado.",
+                    "warning"
+                ))
+    else:
         return None
 
-    language_code = selected_language if selected_language in intro_texts else None
-    language_label = LANGUAGE_CODE_MAP.get(language_code, 'Padrão')
     return {
-        'text': text_to_use,
-        'language_code': language_code,
-        'language_label': language_label,
+        'text': text_to_use.strip(),
+        'language_code': final_language,
+        'language_label': language_label or "Padrão",
+        'translation_applied': translation_applied,
+        'base_language_code': base_language_code,
+    }
+
+def _normalize_language_code(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = str(value).strip().upper()
+    if not normalized:
+        return None
+    if normalized in LANGUAGE_CODE_MAP:
+        return normalized
+    normalized = LANGUAGE_ALIASES.get(normalized, normalized)
+    return normalized if normalized in LANGUAGE_CODE_MAP else None
+
+
+def _infer_language_code_from_name(name: str) -> Optional[str]:
+    tokens = re.split(r"[\s._-]+", name) if name else []
+    for token in tokens:
+        normalized = _normalize_language_code(token)
+        if normalized:
+            return normalized
+    return None
+
+
+def _resolve_intro_text(params: Dict[str, Any], language_hint: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    intro_info = _prepare_intro_text(params, language_hint)
+    if not intro_info:
+        return None
+    return {
+        'text': intro_info['text'],
+        'language_code': intro_info.get('language_code'),
+        'language_label': intro_info.get('language_label', 'Padrão'),
+        'translation_applied': intro_info.get('translation_applied', False),
     }
 
 
@@ -1273,41 +1365,25 @@ def _maybe_create_intro_clip(
     log_prefix: str
 ) -> Optional[Dict[str, Any]]:
 
-    if not params.get('intro_enabled'):
+    intro_selection = _prepare_intro_text(
+        params,
+        language_hint=params.get('current_language_code'),
+        progress_queue=progress_queue,
+        log_prefix=log_prefix,
+    )
+
+    if not intro_selection:
         return None
 
-    intro_texts_raw = params.get('intro_texts') or {}
-    intro_texts: Dict[str, str] = {}
-    for key, value in intro_texts_raw.items():
-        normalized = _normalize_language_code(key)
-        if normalized and value and str(value).strip():
-            intro_texts[normalized] = str(value).strip()
-
-    requested_language = _normalize_language_code(params.get('current_language_code'))
-    text_to_use = intro_texts.get(requested_language)
-    language_label = LANGUAGE_CODE_MAP.get(requested_language) if requested_language else None
-
-    if not text_to_use:
-        default_text = str(params.get('intro_default_text') or '').strip()
-        if default_text:
-            text_to_use = default_text
-            language_label = language_label or "Padrão"
-
-    if not text_to_use:
-        if requested_language:
-            progress_queue.put((
-                "status",
-                f"[{log_prefix}] Nenhum texto de introdução configurado para {LANGUAGE_CODE_MAP.get(requested_language, requested_language)}.",
-                "warning"
-            ))
-        return None
+    text_to_use = intro_selection['text']
 
     try:
         intro_info = _create_typing_intro_clip(text_to_use, resolution, params, temp_dir, progress_queue, cancel_event, log_prefix)
         if intro_info:
-            intro_info['language_code'] = requested_language
-            intro_info['language_label'] = language_label
+            intro_info['language_code'] = intro_selection.get('language_code')
+            intro_info['language_label'] = intro_selection.get('language_label')
             intro_info['text'] = text_to_use
+            intro_info['translation_applied'] = intro_selection.get('translation_applied', False)
         return intro_info
     except Exception as exc:
         logger.error(f"[{log_prefix}] Falha ao criar introdução digitada: {exc}", exc_info=True)
@@ -1442,10 +1518,13 @@ def _perform_final_pass(
     
     W, H = _parse_resolution(params['resolution'])
     intro_info = _maybe_create_intro_clip(params, temp_dir, (W, H), progress_queue, cancel_event, log_prefix)
-    if intro_info and intro_info.get('language_label'):
+    if intro_info:
+        label = intro_info.get('language_label') or "Padrão"
+        if intro_info.get('translation_applied'):
+            label = f"{label} - tradução automática"
         progress_queue.put((
             "status",
-            f"[{log_prefix}] Introdução digitada aplicada ({intro_info.get('language_label')}).",
+            f"[{log_prefix}] Introdução digitada aplicada ({label}).",
             "info"
         ))
 
