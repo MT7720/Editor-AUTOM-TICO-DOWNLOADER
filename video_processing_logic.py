@@ -4,6 +4,7 @@ import platform
 import os
 import re
 import math
+import textwrap
 import glob
 import shutil
 import json
@@ -15,19 +16,351 @@ import random
 import locale
 import gc
 import sys
+ codex/list-files-in-repository-qr5eow
+
 import unicodedata
 import textwrap
+ main
 import wave
 from array import array
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional, Callable, IO
 from queue import Queue, Empty
 from math import ceil
+ codex/list-files-in-repository-qr5eow
+from PIL import Image, ImageFile, ImageDraw
+
 from PIL import Image, ImageFile, ImageDraw, ImageFont
+main
 
 # --- Configuração ---
 logger = logging.getLogger(__name__)
 ImageFile.LOAD_TRUNCATED_IMAGES = True # Permite carregar imagens truncadas
+
+LANGUAGE_CODE_MAP: Dict[str, str] = {
+    "PT": "Português",
+    "ING": "Inglês",
+    "ESP": "Espanhol",
+    "FRAN": "Francês",
+    "BUL": "Búlgaro",
+    "ROM": "Romeno",
+    "ALE": "Alemão",
+    "GREGO": "Grego",
+    "ITA": "Italiano",
+    "POL": "Polonês",
+    "HOLAND": "Holandês",
+}
+
+LANGUAGE_ALIASES: Dict[str, str] = {
+    "PORTUGUES": "PT",
+    "PORTUGUÊS": "PT",
+    "PORTUGUESE": "PT",
+    "ENGLISH": "ING",
+    "INGLES": "ING",
+    "INGLE": "ING",
+    "ES": "ESP",
+    "ESPANHOL": "ESP",
+    "SPANISH": "ESP",
+    "FR": "FRAN",
+    "FRANCES": "FRAN",
+    "FRANCAIS": "FRAN",
+    "FRANÇAIS": "FRAN",
+    "BG": "BUL",
+    "BULGARO": "BUL",
+    "BULGARIAN": "BUL",
+    "RO": "ROM",
+    "ROMENO": "ROM",
+    "ROMANIAN": "ROM",
+    "DE": "ALE",
+    "GERMAN": "ALE",
+    "ALEMAO": "ALE",
+    "GR": "GREGO",
+    "GREEK": "GREGO",
+    "IT": "ITA",
+    "ITALIAN": "ITA",
+    "PL": "POL",
+    "POLISH": "POL",
+    "NL": "HOLAND",
+    "HOLANDES": "HOLAND",
+    "DUTCH": "HOLAND",
+}
+
+def _normalize_language_code(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = str(value).strip().upper()
+    if not normalized:
+        return None
+    if normalized in LANGUAGE_CODE_MAP:
+        return normalized
+    normalized = LANGUAGE_ALIASES.get(normalized, normalized)
+    return normalized if normalized in LANGUAGE_CODE_MAP else None
+
+
+def _infer_language_code_from_name(name: str) -> Optional[str]:
+    tokens = re.split(r"[\s._-]+", name) if name else []
+    for token in tokens:
+        normalized = _normalize_language_code(token)
+        if normalized:
+            return normalized
+    return None
+
+
+def _resolve_intro_text(params: Dict[str, Any], language_hint: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if not params.get('intro_enabled'):
+        return None
+
+    intro_texts_raw = params.get('intro_texts') or {}
+    intro_texts: Dict[str, str] = {}
+    for key, value in intro_texts_raw.items():
+        normalized_key = _normalize_language_code(key)
+        if not normalized_key:
+            continue
+        cleaned = str(value or '').strip()
+        if cleaned:
+            intro_texts[normalized_key] = cleaned
+
+    default_text = str(params.get('intro_default_text') or '').strip()
+    if not intro_texts and not default_text:
+        return None
+
+    selected_language = (
+        _normalize_language_code(language_hint)
+        or _normalize_language_code(params.get('current_language_code'))
+        or _normalize_language_code(params.get('intro_language_code'))
+    )
+
+    text_to_use = intro_texts.get(selected_language) if selected_language else None
+    if not text_to_use:
+        text_to_use = default_text or next(iter(intro_texts.values()), '')
+    if not text_to_use:
+        return None
+
+    language_code = selected_language if selected_language in intro_texts else None
+    language_label = LANGUAGE_CODE_MAP.get(language_code, 'Padrão')
+    return {
+        'text': text_to_use,
+        'language_code': language_code,
+        'language_label': language_label,
+    }
+
+
+def _render_typing_frames(text: str, resolution: Tuple[int, int], frames_dir: str, font_path: Optional[str]) -> Tuple[int, float]:
+    os.makedirs(frames_dir, exist_ok=True)
+    width, height = resolution
+    fps = 30
+    cursor_symbol = '▋'
+
+    try:
+        if font_path and os.path.isfile(font_path):
+            from PIL import ImageFont
+
+            base_font = ImageFont.truetype(font_path, max(int(height * 0.07), 24))
+        else:
+            from PIL import ImageFont
+
+            base_font = ImageFont.truetype("arial.ttf", max(int(height * 0.07), 24))
+    except Exception:
+        from PIL import ImageFont
+
+        base_font = ImageFont.load_default()
+
+    total_frames = 0
+    clean_text = text.replace('\r\n', '\n')
+    characters = list(clean_text)
+    if not characters:
+        characters = [' ']
+
+    max_chars_per_line = max(20, int(width / max(base_font.size * 0.55, 1)))
+
+    for index in range(len(characters) + 10):
+        current = characters[:max(0, index)]
+        display_text = ''.join(current)
+        if index < len(characters):
+            display_text += cursor_symbol
+        elif index % 6 < 3:
+            display_text += cursor_symbol
+
+        wrapped_lines: List[str] = []
+        for block in display_text.split('\n'):
+            block = block.strip()
+            wrapped_lines.extend(textwrap.wrap(block, width=max_chars_per_line) or [''])
+        if not wrapped_lines:
+            wrapped_lines = ['']
+
+        img = Image.new('RGB', (width, height), color='black')
+        draw = ImageDraw.Draw(img)
+        line_height = base_font.size + 6
+        total_text_height = line_height * len(wrapped_lines)
+        y = (height - total_text_height) // 2
+        for line in wrapped_lines:
+            line_width = draw.textlength(line, font=base_font)
+            x = (width - int(line_width)) // 2
+            draw.text((x, y), line, font=base_font, fill='white')
+            y += line_height
+
+        frame_path = os.path.join(frames_dir, f"frame_{index:04d}.png")
+        img.save(frame_path, format='PNG')
+        total_frames += 1
+
+    duration = total_frames / fps
+    return total_frames, duration
+
+
+def _synthesize_typing_audio(text: str, output_path: str, sample_rate: int = 44100) -> float:
+    tone_duration = 0.045
+    silence_duration = 0.055
+    tone_freq = 850
+
+    samples = array('h')
+    amplitude = int(0.35 * 32767)
+
+    for ch in text:
+        if ch.isspace():
+            silence_samples = int(sample_rate * (tone_duration + silence_duration))
+            samples.extend([0] * silence_samples)
+            continue
+        tone_samples = int(sample_rate * tone_duration)
+        for n in range(tone_samples):
+            envelope = math.exp(-3 * (n / max(1, tone_samples)))
+            value = int(amplitude * envelope * math.sin(2 * math.pi * tone_freq * n / sample_rate))
+            samples.append(value)
+        silence_samples = int(sample_rate * silence_duration)
+        samples.extend([0] * silence_samples)
+
+    samples.extend([0] * int(sample_rate * 0.2))
+
+    with wave.open(output_path, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(samples.tobytes())
+
+    return len(samples) / sample_rate
+
+
+def _create_typing_intro_clip(
+    text: str,
+    resolution: Tuple[int, int],
+    params: Dict[str, Any],
+    temp_dir: str,
+    progress_queue: Queue,
+    cancel_event: threading.Event,
+    log_prefix: str,
+) -> Optional[Dict[str, Any]]:
+    intro_temp_dir = tempfile.mkdtemp(prefix="typing-intro-", dir=temp_dir)
+    frames_dir = os.path.join(intro_temp_dir, "frames")
+    font_path = params.get('subtitle_style', {}).get('font_file') if params.get('subtitle_style') else None
+
+    try:
+        total_frames, frames_duration = _render_typing_frames(text, resolution, frames_dir, font_path)
+        audio_path = os.path.join(intro_temp_dir, "typing_audio.wav")
+        audio_duration = _synthesize_typing_audio(text, audio_path)
+
+        fps = 30
+        progress_queue.put(("status", f"[{log_prefix}] Criando animação da introdução...", "info"))
+        cmd_video = [
+            params['ffmpeg_path'], '-y',
+            '-framerate', str(fps),
+            '-i', os.path.join(frames_dir, 'frame_%04d.png'),
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+            os.path.join(intro_temp_dir, 'typing_intro_silent.mp4')
+        ]
+
+        if not _execute_ffmpeg(cmd_video, max(frames_duration, 1), None, cancel_event, f"{log_prefix} (Intro Frames)", progress_queue):
+            raise RuntimeError("Falha ao gerar a animação da introdução")
+
+        progress_queue.put(("status", f"[{log_prefix}] Misturando áudio da digitação...", "info"))
+        final_intro_path = os.path.join(intro_temp_dir, 'typing_intro.mp4')
+        cmd_merge = [
+            params['ffmpeg_path'], '-y',
+            '-i', os.path.join(intro_temp_dir, 'typing_intro_silent.mp4'),
+            '-i', audio_path,
+            '-c:v', 'copy',
+            '-c:a', 'aac', '-b:a', '160k',
+            '-shortest',
+            final_intro_path
+        ]
+
+        total_duration = max(frames_duration, audio_duration)
+        if not _execute_ffmpeg(cmd_merge, total_duration, None, cancel_event, f"{log_prefix} (Intro Áudio)", progress_queue):
+            raise RuntimeError("Falha ao sincronizar áudio da introdução")
+
+        return {
+            'path': final_intro_path,
+            'temp_dir': intro_temp_dir,
+            'duration': total_duration,
+        }
+    except Exception as exc:
+        shutil.rmtree(intro_temp_dir, ignore_errors=True)
+        progress_queue.put(("status", f"[{log_prefix}] Erro ao gerar a introdução: {exc}", "error"))
+        return None
+
+
+def _combine_intro_with_main(
+    intro_info: Dict[str, Any],
+    main_path: str,
+    final_output_path: str,
+    params: Dict[str, Any],
+    progress_queue: Queue,
+    cancel_event: threading.Event,
+    log_prefix: str,
+) -> bool:
+    intro_path = intro_info['path']
+    ffmpeg_path = params['ffmpeg_path']
+
+    intro_props = _probe_media_properties(intro_path, ffmpeg_path) or {}
+    main_props = _probe_media_properties(main_path, ffmpeg_path) or {}
+
+    intro_duration = float(intro_props.get('format', {}).get('duration', intro_info.get('duration', 5)))
+    main_duration = float(main_props.get('format', {}).get('duration', 0))
+    fade_duration = 0.8 if intro_duration >= 1.6 else max(0.4, intro_duration / 2)
+    offset = max(0.0, intro_duration - fade_duration)
+
+    filter_parts = [
+        "[0:v]format=yuv420p,setsar=1[v0]",
+        "[1:v]format=yuv420p,setsar=1[v1]",
+        f"[v0][v1]xfade=transition=fade:duration={fade_duration}:offset={offset}[vout]",
+    ]
+    map_args = ['-map', '[vout]']
+
+    intro_has_audio = any(stream.get('codec_type') == 'audio' for stream in intro_props.get('streams', []))
+    main_has_audio = any(stream.get('codec_type') == 'audio' for stream in main_props.get('streams', []))
+
+    if intro_has_audio and main_has_audio:
+        filter_parts.append(f"[0:a]apad=pad_dur={fade_duration}[introa]")
+        filter_parts.append(f"[introa][1:a]acrossfade=d={fade_duration}[aout]")
+        map_args.extend(['-map', '[aout]'])
+    elif intro_has_audio:
+        filter_parts.append(f"[0:a]afade=t=out:st={offset}:d={fade_duration}[introa]")
+        map_args.extend(['-map', '[introa]'])
+    elif main_has_audio:
+        delay_ms = int(intro_duration * 1000)
+        filter_parts.append(f"[1:a]adelay={delay_ms}|{delay_ms}[aout]")
+        map_args.extend(['-map', '[aout]'])
+
+    progress_queue.put(("status", f"[{log_prefix}] Mesclando introdução digitada ao vídeo final...", "info"))
+
+    filter_complex = ';'.join(filter_parts)
+    cmd = [
+        ffmpeg_path, '-y',
+        '-i', intro_path,
+        '-i', main_path,
+        '-filter_complex', filter_complex,
+        *map_args,
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+    ]
+
+    if any(label in map_args for label in ('[aout]', '[introa]')):
+        cmd.extend(['-c:a', 'aac', '-b:a', '192k'])
+    else:
+        cmd.append('-an')
+
+    cmd.extend(['-movflags', '+faststart', final_output_path])
+
+    total_duration = intro_duration + main_duration
+    return _execute_ffmpeg(cmd, total_duration or intro_duration or 5, None, cancel_event, f"{log_prefix} (Intro Merge)", progress_queue)
+
 
 # --- Classes Auxiliares ---
 
@@ -468,6 +801,7 @@ def _run_single_item_processing(params: Dict[str, Any], progress_queue: Queue, c
         progress_queue.put(("status", f"Nome do arquivo de saída definido para: {output_name}", "info"))
 
     music_paths = [params.get('music_file_single')] if params.get('music_file_single') else []
+    final_params['current_language_code'] = params.get('intro_language_code')
 
     return _perform_final_pass(
         params=final_params,
@@ -531,6 +865,7 @@ def _run_slideshow_processing(params: Dict[str, Any], progress_queue: Queue, can
         progress_queue.put(("status", f"Nome do arquivo de saída definido para: {output_name}", "info"))
 
     music_paths = [params.get('music_file_single')] if params.get('music_file_single') else []
+    final_params['current_language_code'] = params.get('intro_language_code')
 
     return _perform_final_pass(
         params=final_params,
@@ -1224,9 +1559,17 @@ def _perform_final_pass(
         last_audio_stream = "[a_fadeout]"
     
     final_output_path = str(Path(params['output_folder']) / params['output_filename_single'])
+ codex/list-files-in-repository-qr5eow
+    intro_context = _resolve_intro_text(params, params.get('current_language_code'))
+    if params.get('intro_enabled') and not intro_context:
+        progress_queue.put(("status", f"[{log_prefix}] Nenhum texto de introdução definido para este vídeo. Introdução ignorada.", "warning"))
+    output_without_intro = final_output_path if not intro_context else os.path.join(temp_dir, "final_sem_intro.mp4")
+
+
     content_only_output_path = final_output_path if not intro_info else os.path.join(
         temp_dir, f"main-content-{Path(params['output_filename_single']).stem}.mp4"
     )
+ main
     cmd_final = [params['ffmpeg_path'], '-y', *inputs]
     
     filter_complex_parts.append(f"{last_video_stream}format=yuv420p[vout]")
@@ -1260,17 +1603,45 @@ def _perform_final_pass(
         cmd_final.append("-shortest")
     
     cmd_final.extend(['-movflags', '+faststart'])
+ codex/list-files-in-repository-qr5eow
+    cmd_final.append(output_without_intro)
+
     cmd_final.append(content_only_output_path)
+main
 
     def final_progress_callback(pct):
         progress_queue.put(("progress", pct))
 
     success = _execute_ffmpeg(cmd_final, total_duration, final_progress_callback, cancel_event, f"{log_prefix} (Final)", progress_queue)
+codex/list-files-in-repository-qr5eow
+    if not success:
+        return False
+
+    if intro_context:
+        intro_clip = _create_typing_intro_clip(intro_context['text'], (W, H), params, temp_dir, progress_queue, cancel_event, log_prefix)
+        if not intro_clip:
+            if output_without_intro != final_output_path and os.path.exists(output_without_intro):
+                shutil.move(output_without_intro, final_output_path)
+            return False
+        combined = _combine_intro_with_main(intro_clip, output_without_intro, final_output_path, params, progress_queue, cancel_event, log_prefix)
+        shutil.rmtree(intro_clip.get('temp_dir', ''), ignore_errors=True)
+        if not combined:
+            if output_without_intro != final_output_path and os.path.exists(output_without_intro):
+                shutil.move(output_without_intro, final_output_path)
+            return False
+        if output_without_intro != final_output_path and os.path.exists(output_without_intro):
+            os.remove(output_without_intro)
+        language_label = intro_context.get('language_label', 'Padrão')
+        progress_queue.put(("status", f"[{log_prefix}] Introdução digitada aplicada ({language_label}).", "info"))
+
+    return True
+
 
     if not success or not intro_info:
         return success
 
     return _combine_intro_with_main(intro_info, content_only_output_path, final_output_path, params, progress_queue, cancel_event, log_prefix)
+main
 
 def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, cancel_event: threading.Event, temp_dir: str) -> bool:
     if cancel_event.is_set(): return False
@@ -1320,7 +1691,7 @@ def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, c
         try:
             parts = Path(audio_filename).stem.split()
             if len(parts) < 2: raise IndexError("Formato de nome de arquivo inválido.")
-            lang_code = parts[1].upper()
+            lang_code = _normalize_language_code(parts[1]) or parts[1].upper()
             language_name = lang_code_to_folder_name_map.get(lang_code)
             if not language_name:
                  progress_queue.put(("status", f"[{log_prefix}] Aviso: Código '{lang_code}' não mapeado. Pulando.", "warning")); continue
@@ -1366,13 +1737,17 @@ def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, c
             else:
                 music_files_for_pass = music_playlist
 
-        final_pass_params = {**params, 
+        final_pass_params = {**params,
             'output_filename_single': f"video_final_{Path(audio_filename).stem}.mp4"
         }
+ codex/list-files-in-repository-qr5eow
+        final_pass_params['current_language_code'] = lang_code
+
         
         normalized_lang = _normalize_language_code(lang_code) or _normalize_language_code(language_name)
         if normalized_lang:
             final_pass_params['current_language_code'] = normalized_lang
+main
 
         final_success = _perform_final_pass(
             params=final_pass_params,
@@ -1483,10 +1858,18 @@ def _run_batch_image_processing(params: Dict[str, Any], progress_queue: Queue, c
             else:
                 music_files_for_pass = music_playlist
 
+        language_guess = _infer_language_code_from_name(Path(audio_filename).stem)
+        if not language_guess and subtitle_file:
+            language_guess = _infer_language_code_from_name(Path(subtitle_file).stem)
+
         final_pass_params = {**params, 'output_filename_single': f"video_final_{Path(audio_filename).stem}.mp4"}
+codex/list-files-in-repository-qr5eow
+        final_pass_params['current_language_code'] = language_guess
+
         inferred_lang = _infer_language_code_from_filename(audio_filename)
         if inferred_lang:
             final_pass_params['current_language_code'] = inferred_lang
+main
 
         final_success = _perform_final_pass(
             params=final_pass_params,
@@ -1638,10 +2021,18 @@ def _run_batch_mixed_processing(params: Dict[str, Any], progress_queue: Queue, c
             else:
                 music_files_for_pass = music_playlist
 
+        language_guess = _infer_language_code_from_name(Path(audio_filename).stem)
+        if not language_guess and subtitle_file:
+            language_guess = _infer_language_code_from_name(Path(subtitle_file).stem)
+
         final_pass_params = {**params, 'output_filename_single': f"video_final_{Path(audio_filename).stem}.mp4"}
+codex/list-files-in-repository-qr5eow
+        final_pass_params['current_language_code'] = language_guess
+
         inferred_lang = _infer_language_code_from_filename(audio_filename)
         if inferred_lang:
             final_pass_params['current_language_code'] = inferred_lang
+main
 
         _perform_final_pass(
             params=final_pass_params, base_video_path=base_video_path, narration_path=narration_path,
@@ -1780,11 +2171,19 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
             else:
                 music_files_for_pass = music_playlist
 
+        language_guess = _infer_language_code_from_name(audio_filepath.stem)
+        if not language_guess and subtitle_file:
+            language_guess = _infer_language_code_from_name(Path(subtitle_file).stem)
+
         final_pass_params = {**params, 'output_filename_single': f"video_final_{audio_filepath.stem}.mp4"}
+codex/list-files-in-repository-qr5eow
+        final_pass_params['current_language_code'] = language_guess
+
 
         inferred_lang = _infer_language_code_from_filename(audio_filepath.name)
         if inferred_lang:
             final_pass_params['current_language_code'] = inferred_lang
+main
 
         final_pass_params['mov_overlay_path'] = None
         final_pass_params['intro_phrase_text'] = ""
