@@ -47,40 +47,231 @@ LANGUAGE_CODE_MAP: Dict[str, str] = {
     "ITA": "Italiano",
     "POL": "Polonês",
     "HOLAND": "Holandês",
+    "RUS": "Russo",
+    "UKR": "Ucraniano",
+    "CHEC": "Tcheco",
+    "SLO": "Eslovaco",
+    "HUN": "Húngaro",
+    "SER": "Sérvio",
+    "CRO": "Croata",
+    "SUE": "Sueco",
+    "DAN": "Dinamarquês",
+    "NOR": "Norueguês",
+    "FIN": "Finlandês",
+    "ISL": "Islandês",
+    "TUR": "Turco",
+    "ARA": "Árabe",
+    "HIN": "Hindi",
+    "BEN": "Bengali",
+    "JAP": "Japonês",
+    "KOR": "Coreano",
+    "CHI": "Chinês (Simplificado)",
+    "THA": "Tailandês",
+    "VIE": "Vietnamita",
+    "MAL": "Malaio",
+    "IND": "Indonésio",
+    "FIL": "Filipino",
+    "PER": "Persa",
+    "HEB": "Hebraico",
+    "SWA": "Suaíli",
+    "AFR": "Africâner",
+    "CAT": "Catalão",
+    "GALE": "Galego",
 }
 
 LANGUAGE_ALIASES: Dict[str, str] = {
+    "PT-BR": "PT",
+    "PT-PT": "PT",
+    "PT_PT": "PT",
+    "PTPT": "PT",
     "PORTUGUES": "PT",
+    "PORTUGUESA": "PT",
     "PORTUGUÊS": "PT",
+    "PORTUGUÊSA": "PT",
     "PORTUGUESE": "PT",
+    "BR": "PT",
+    "EN": "ING",
+    "EN-US": "ING",
+    "EN-GB": "ING",
+    "EN_UK": "ING",
     "ENGLISH": "ING",
     "INGLES": "ING",
     "INGLE": "ING",
+    "INGLÊS": "ING",
     "ES": "ESP",
+    "ES-ES": "ESP",
+    "ES-MX": "ESP",
+    "ES-419": "ESP",
+    "ES-LA": "ESP",
+    "ESPAÑOL": "ESP",
+    "ESPANOL": "ESP",
     "ESPANHOL": "ESP",
     "SPANISH": "ESP",
     "FR": "FRAN",
+    "FR-CA": "FRAN",
+    "FR-BE": "FRAN",
     "FRANCES": "FRAN",
+    "FRANCÊS": "FRAN",
     "FRANCAIS": "FRAN",
     "FRANÇAIS": "FRAN",
+    "DE": "ALE",
+    "DE-DE": "ALE",
+    "DE-AT": "ALE",
+    "DE-CH": "ALE",
+    "GERMAN": "ALE",
+    "GERMANO": "ALE",
+    "GERMANIC": "ALE",
+    "ALEMAO": "ALE",
+    "ALEMÃO": "ALE",
+    "DEUTSCH": "ALE",
     "BG": "BUL",
     "BULGARO": "BUL",
+    "BÚLGARO": "BUL",
     "BULGARIAN": "BUL",
     "RO": "ROM",
     "ROMENO": "ROM",
     "ROMANIAN": "ROM",
-    "DE": "ALE",
-    "GERMAN": "ALE",
-    "ALEMAO": "ALE",
+    "ROMÂN": "ROM",
+    "ROMANA": "ROM",
     "GR": "GREGO",
+    "EL": "GREGO",
+    "ELLINIKA": "GREGO",
     "GREEK": "GREGO",
     "IT": "ITA",
+    "IT-IT": "ITA",
     "ITALIAN": "ITA",
+    "ITALIANO": "ITA",
+    "ITÁLIANO": "ITA",
     "PL": "POL",
+    "PL-PL": "POL",
     "POLISH": "POL",
+    "POLONES": "POL",
+    "POLONÊS": "POL",
+    "POLSKI": "POL",
     "NL": "HOLAND",
+    "NL-NL": "HOLAND",
+    "NL-BE": "HOLAND",
     "HOLANDES": "HOLAND",
+    "HOLANDÊS": "HOLAND",
     "DUTCH": "HOLAND",
+    "RU": "RUS",
+    "RU-RU": "RUS",
+    "RUSSO": "RUS",
+    "RUSSIAN": "RUS",
+    "РУССКИЙ": "RUS",
+    "РУССКИИ": "RUS",
+    "UK": "UKR",
+    "UKRAINIAN": "UKR",
+    "UCRANIANO": "UKR",
+    "CS": "CHEC",
+    "CZ": "CHEC",
+    "CZECH": "CHEC",
+    "TCHECO": "CHEC",
+    "CESTINA": "CHEC",
+    "SK": "SLO",
+    "SLOVAK": "SLO",
+    "ESLOVACO": "SLO",
+    "HU": "HUN",
+    "HUNGARIAN": "HUN",
+    "HUNGARO": "HUN",
+    "SR": "SER",
+    "SERBIAN": "SER",
+    "SÉRVIO": "SER",
+    "SERVIO": "SER",
+    "HR": "CRO",
+    "CROATIAN": "CRO",
+    "CROATA": "CRO",
+    "SV": "SUE",
+    "SV-SE": "SUE",
+    "SWEDISH": "SUE",
+    "SUECO": "SUE",
+    "SVENSKA": "SUE",
+    "DA": "DAN",
+    "DA-DK": "DAN",
+    "DANISH": "DAN",
+    "DINAMARQUES": "DAN",
+    "NO": "NOR",
+    "NB": "NOR",
+    "NORWEGIAN": "NOR",
+    "NORUEGUES": "NOR",
+    "FI": "FIN",
+    "FINNISH": "FIN",
+    "FINLANDES": "FIN",
+    "IS": "ISL",
+    "IS-IS": "ISL",
+    "ICELANDIC": "ISL",
+    "ISLANDES": "ISL",
+    "TR": "TUR",
+    "TURKISH": "TUR",
+    "TURCO": "TUR",
+    "AR": "ARA",
+    "ARABIC": "ARA",
+    "ARABE": "ARA",
+    "العربية": "ARA",
+    "HI": "HIN",
+    "HINDI": "HIN",
+    "हिंदी": "HIN",
+    "BN": "BEN",
+    "BENGALI": "BEN",
+    "JA": "JAP",
+    "JA-JP": "JAP",
+    "JAPANESE": "JAP",
+    "JAPONES": "JAP",
+    "日本語": "JAP",
+    "KO": "KOR",
+    "KO-KR": "KOR",
+    "KOREAN": "KOR",
+    "COREANO": "KOR",
+    "한국어": "KOR",
+    "한국어": "KOR",
+    "ZH": "CHI",
+    "ZH-CN": "CHI",
+    "ZH_CN": "CHI",
+    "ZH-TW": "CHI",
+    "ZH_TW": "CHI",
+    "ZH-HK": "CHI",
+    "ZH_HK": "CHI",
+    "CHINESE": "CHI",
+    "CHINES": "CHI",
+    "中文": "CHI",
+    "TH": "THA",
+    "THAI": "THA",
+    "TAILANDES": "THA",
+    "ภาษาไทย": "THA",
+    "VI": "VIE",
+    "VIETNAMESE": "VIE",
+    "VIETNAMES": "VIE",
+    "TIENG VIET": "VIE",
+    "TIENGVIET": "VIE",
+    "MS": "MAL",
+    "MALAY": "MAL",
+    "MALAIO": "MAL",
+    "ID": "IND",
+    "INDONESIAN": "IND",
+    "INDONESIO": "IND",
+    "TL": "FIL",
+    "TAGALOG": "FIL",
+    "FILIPINO": "FIL",
+    "FA": "PER",
+    "FARSI": "PER",
+    "PERSIAN": "PER",
+    "PERSA": "PER",
+    "HE": "HEB",
+    "HEBREW": "HEB",
+    "HEBRAICO": "HEB",
+    "SW": "SWA",
+    "SWAHILI": "SWA",
+    "SUAILI": "SWA",
+    "AF": "AFR",
+    "AFRIKAANS": "AFR",
+    "CATALAN": "CAT",
+    "CATALAO": "CAT",
+    "CATALA": "CAT",
+    "CA": "CAT",
+    "GL": "GALE",
+    "GL-ES": "GALE",
+    "GALEGO": "GALE",
+    "GALICIAN": "GALE",
 }
 
 LANGUAGE_TRANSLATION_CODES: Dict[str, str] = {
@@ -95,6 +286,46 @@ LANGUAGE_TRANSLATION_CODES: Dict[str, str] = {
     "ITA": "it",
     "POL": "pl",
     "HOLAND": "nl",
+    "RUS": "ru",
+    "UKR": "uk",
+    "CHEC": "cs",
+    "SLO": "sk",
+    "HUN": "hu",
+    "SER": "sr",
+    "CRO": "hr",
+    "SUE": "sv",
+    "DAN": "da",
+    "NOR": "nb",
+    "FIN": "fi",
+    "ISL": "is",
+    "TUR": "tr",
+    "ARA": "ar",
+    "HIN": "hi",
+    "BEN": "bn",
+    "JAP": "ja",
+    "KOR": "ko",
+    "CHI": "zh-cn",
+    "THA": "th",
+    "VIE": "vi",
+    "MAL": "ms",
+    "IND": "id",
+    "FIL": "tl",
+    "PER": "fa",
+    "HEB": "he",
+    "SWA": "sw",
+    "AFR": "af",
+    "CAT": "ca",
+    "GALE": "gl",
+}
+
+
+def _strip_accents(value: str) -> str:
+    normalized = unicodedata.normalize('NFKD', value or '')
+    return ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+LANGUAGE_NAME_TO_CODE: Dict[str, str] = {
+    _strip_accents(name).upper(): code for code, name in LANGUAGE_CODE_MAP.items()
 }
 
 
@@ -200,13 +431,15 @@ def _prepare_intro_text(
 def _normalize_language_code(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
-    normalized = str(value).strip().upper()
-    if not normalized:
+    candidate = _strip_accents(str(value).strip()).upper()
+    if not candidate:
         return None
-    if normalized in LANGUAGE_CODE_MAP:
-        return normalized
-    normalized = LANGUAGE_ALIASES.get(normalized, normalized)
-    return normalized if normalized in LANGUAGE_CODE_MAP else None
+    candidate = LANGUAGE_ALIASES.get(candidate, candidate)
+    if candidate in LANGUAGE_CODE_MAP:
+        return candidate
+    if candidate in LANGUAGE_NAME_TO_CODE:
+        return LANGUAGE_NAME_TO_CODE[candidate]
+    return None
 
 
 def _infer_language_code_from_name(name: str) -> Optional[str]:
@@ -490,80 +723,6 @@ class FFmpegProcessManager:
         self.terminate_all()
 
 process_manager = FFmpegProcessManager()
-
-
-LANGUAGE_CODE_MAP: Dict[str, str] = {
-    "PT": "Português",
-    "ING": "Inglês",
-    "ESP": "Espanhol",
-    "FRAN": "Francês",
-    "BUL": "Búlgaro",
-    "ROM": "Romeno",
-    "ALE": "Alemão",
-    "GREGO": "Grego",
-    "ITA": "Italiano",
-    "POL": "Polonês",
-    "HOLAND": "Holandês",
-}
-
-LANGUAGE_ALIASES: Dict[str, str] = {
-    "EN": "ING",
-    "ENGLISH": "ING",
-    "INGLES": "ING",
-    "INGLÊS": "ING",
-    "ES": "ESP",
-    "ESPANHOL": "ESP",
-    "ESPAÑOL": "ESP",
-    "FR": "FRAN",
-    "FRANCES": "FRAN",
-    "FRANCÊS": "FRAN",
-    "FRANCAIS": "FRAN",
-    "DE": "ALE",
-    "GERMAN": "ALE",
-    "GERMANO": "ALE",
-    "ALEMAO": "ALE",
-    "ALEMÃO": "ALE",
-    "IT": "ITA",
-    "ITALIANO": "ITA",
-    "RO": "ROM",
-    "ROMENO": "ROM",
-    "BG": "BUL",
-    "BULGARO": "BUL",
-    "BÚLGARO": "BUL",
-    "NL": "HOLAND",
-    "HOLANDES": "HOLAND",
-    "HOLANDÊS": "HOLAND",
-    "PL": "POL",
-    "POLONES": "POL",
-    "POLONÊS": "POL",
-    "EL": "GREGO",
-    "GR": "GREGO",
-    "GREGO": "GREGO",
-}
-
-def _strip_accents(value: str) -> str:
-    normalized = unicodedata.normalize('NFKD', value or '')
-    return ''.join(ch for ch in normalized if not unicodedata.combining(ch))
-
-
-LANGUAGE_NAME_TO_CODE: Dict[str, str] = {
-    _strip_accents(name).upper(): code for code, name in LANGUAGE_CODE_MAP.items()
-}
-
-
-def _normalize_language_code(raw_code: Optional[str]) -> Optional[str]:
-    if not raw_code:
-        return None
-    candidate = _strip_accents(str(raw_code).strip()).upper()
-    if not candidate:
-        return None
-    if candidate in LANGUAGE_ALIASES:
-        candidate = LANGUAGE_ALIASES[candidate]
-    if candidate in LANGUAGE_CODE_MAP:
-        return candidate
-    if candidate in LANGUAGE_NAME_TO_CODE:
-        return LANGUAGE_NAME_TO_CODE[candidate]
-    return None
 
 
 def _infer_language_code_from_filename(filename: str) -> Optional[str]:
