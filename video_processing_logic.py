@@ -797,11 +797,27 @@ def _infer_language_code_from_filename(filename: str) -> Optional[str]:
     return None
 
 def _stream_reader(stream: Optional[IO], line_queue: Queue):
-    if not stream: return
+    if not stream:
+        return
+
     encoding = locale.getpreferredencoding(False) or 'utf-8'
+
     try:
-        for line in iter(lambda: stream.read(1024), b''):
-            line_queue.put(line.decode(encoding, errors='replace'))
+        # Ler linha a linha para garantir que atualizações frequentes do FFmpeg
+        # cheguem imediatamente à fila de processamento. O uso de "read" com
+        # blocos grandes pode provocar travamentos aparentes quando o FFmpeg
+        # escreve apenas pequenas mensagens de progresso.
+        while True:
+            chunk = stream.readline()
+            if not chunk:
+                break
+
+            if isinstance(chunk, bytes):
+                decoded = chunk.decode(encoding, errors='replace')
+            else:
+                decoded = chunk
+
+            line_queue.put(decoded)
     except Exception as e:
         logger.warning(f"O leitor de stream encontrou um erro: {e}")
     finally:
