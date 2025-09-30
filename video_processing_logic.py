@@ -817,13 +817,13 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
         progress_queue.put(("status", error_msg, "error"))
         logger.critical(f"FFmpeg executable check failed: '{ffmpeg_path}'")
         return False
-        
+
     logger.info(f"[{log_prefix}] Executing FFmpeg: {ffmpeg_path}")
     progress_queue.put(("status", f"[{log_prefix}] Iniciando processo FFmpeg...", "info"))
-    
+
     cmd_with_progress = [ffmpeg_path] + ["-progress", "pipe:1", "-nostats"] + cmd[1:]
     creation_flags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-    
+
     logger.debug(f"[{log_prefix}] Comando FFmpeg: {' '.join(map(str, cmd_with_progress))}")
 
     try:
@@ -842,6 +842,12 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
 
     full_output = ""
     last_reported_pct = 0.0
+    stall_warning_threshold = 45.0
+    stall_warning_interval = 15.0
+    stall_abort_threshold = 120.0
+    last_activity_time = time.monotonic()
+    last_warning_bucket = 0
+    stalled = False
 
     while process.poll() is None:
         if cancel_event.is_set():
@@ -850,7 +856,10 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
             process.terminate(); break
 
         try:
-            for line in output_queue.get(timeout=0.1).split('\n'):
+            chunk = output_queue.get(timeout=0.1)
+            last_activity_time = time.monotonic()
+            last_warning_bucket = 0
+            for line in chunk.split('\n'):
                 full_output += line + '\n'
                 stripped = line.strip()
                 if "out_time_ms=" in stripped or "out_time_us=" in stripped or stripped.startswith("out_time="):
@@ -882,29 +891,66 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
                     if stripped_line:
                         logger.debug(f"[{log_prefix}/ffmpeg] {stripped_line}")
         except Empty:
+            elapsed = time.monotonic() - last_activity_time
+            if elapsed >= stall_abort_threshold:
+                stalled = True
+                logger.warning(
+                    f"[{log_prefix}] Sem progresso por {int(elapsed)}s. "
+                    f"Abortando processo FFmpeg {process.pid} por possível travamento."
+                )
+                progress_queue.put((
+                    "status",
+                    f"[{log_prefix}] Nenhum progresso há {int(elapsed)}s. Abortando renderização atual...",
+                    "warning",
+                ))
+                process.terminate()
+                break
+
+            warning_elapsed = elapsed - stall_warning_threshold
+            if warning_elapsed >= 0:
+                warning_bucket = int(warning_elapsed // stall_warning_interval) + 1
+                if warning_bucket > last_warning_bucket:
+                    last_warning_bucket = warning_bucket
+                    warn_seconds = int(stall_warning_threshold + stall_warning_interval * (warning_bucket - 1))
+                    progress_queue.put((
+                        "status",
+                        f"[{log_prefix}] Sem progresso há {warn_seconds}s… processo pode estar lento ou travado.",
+                        "info",
+                    ))
             continue
-    
-    process.wait(timeout=5)
+
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        logger.error(f"[{log_prefix}] Processo FFmpeg não encerrou após sinal de término. Forçando kill.")
+        process.kill()
+        process.wait()
     process_manager.remove(process)
-    
+
     while not output_queue.empty():
         full_output += output_queue.get_nowait()
 
     if cancel_event.is_set():
         logger.warning(f"[{log_prefix}] Processo cancelado.")
         return False
-        
-    if process.returncode == 0:
+
+    if process.returncode == 0 and not stalled:
         logger.info(f"[{log_prefix}] Comando FFmpeg concluído com sucesso.")
         if progress_callback:
             progress_callback(1.0)
         return True
     else:
+        if stalled and process.returncode == 0:
+            # Garantir que travamentos detectados não sejam reportados como sucesso silencioso
+            process.returncode = -1
+        if stalled:
+            logger.error(f"[{log_prefix}] FFmpeg interrompido por falta de progresso.")
+            progress_queue.put(("status", f"[{log_prefix}] FFmpeg interrompido por falta de progresso.", "error"))
         logger.error(f"[{log_prefix}] FFmpeg falhou com o código {process.returncode}.")
         logger.error(f"[{log_prefix}] Log FFmpeg:\n{full_output}")
         error_lines = [line for line in full_output.lower().splitlines() if 'error' in line or 'invalid' in line]
         error_snippet = "\n".join(error_lines[-3:]) if error_lines else "\n".join(full_output.strip().split("\n")[-5:])
-        
+
         progress_queue.put(("status", f"[{log_prefix}] ERRO no FFmpeg: {error_snippet}", "error"))
         return False
 
@@ -1871,44 +1917,85 @@ def _perform_final_pass(
             f"main-content-{Path(params['output_filename_single']).stem}.mp4",
         )
 
-    cmd_final = [params['ffmpeg_path'], '-y', *inputs]
-    
+    cmd_prefix = [params['ffmpeg_path'], '-y', *inputs]
+
     filter_complex_parts.append(f"{last_video_stream}format=yuv420p[vout]")
     map_args.extend(["-map", "[vout]"])
-    
+
     if last_audio_stream:
         map_args.extend(["-map", last_audio_stream])
     elif 'main_video' in input_map:
         # Tenta mapear o áudio do vídeo base se nenhum outro áudio for fornecido
         map_args.extend(["-map", f"{input_map['main_video']}:a?"])
 
-
+    final_filter_str = ""
     if filter_complex_parts:
         final_filter_str = ";".join(filter_complex_parts)
         logger.debug(f"[{log_prefix}] Cadeia de Filtros Completa:\n{final_filter_str}")
-        cmd_final.extend(['-filter_complex', final_filter_str])
+        cmd_prefix.extend(['-filter_complex', final_filter_str])
 
-    cmd_final.extend(map_args)
-    
+    cmd_prefix.extend(map_args)
+
     force_reencode = any(s in final_filter_str for s in ['scale=', 'blend=', 'overlay=', 'fade=', 'subtitles='])
-    cmd_final.extend(_get_codec_params(params, force_reencode))
-    
-    if last_audio_stream:
-        cmd_final.extend(['-c:a', 'aac', '-b:a', '192k'])
-    else:
-        cmd_final.extend(['-c:a', 'copy'])
+    primary_codec_params = _get_codec_params(params, force_reencode)
 
+    audio_args = ['-c:a', 'aac', '-b:a', '192k'] if last_audio_stream else ['-c:a', 'copy']
 
-    cmd_final.extend(["-t", str(total_duration)])
+    time_args = ["-t", str(total_duration)]
     if not params.get('add_fade_out'):
-        cmd_final.append("-shortest")
-    
-    cmd_final.extend(['-movflags', '+faststart', content_only_output_path])
+        time_args.append("-shortest")
+
+    output_args = ['-movflags', '+faststart', content_only_output_path]
+
+    def build_cmd(codec_params: List[str]) -> List[str]:
+        return [*cmd_prefix, *codec_params, *audio_args, *time_args, *output_args]
+
+    codec_attempts: List[Tuple[str, List[str]]] = []
+
+    def codec_label(codec_params: List[str]) -> str:
+        if any(enc in codec_params for enc in ('h264_nvenc', 'hevc_nvenc')):
+            return 'GPU (NVENC)'
+        if any(enc in codec_params for enc in ('libx264', 'libx265')):
+            return 'CPU (libx264)'
+        if 'copy' in codec_params:
+            return 'Cópia direta'
+        return 'Encoder padrão'
+
+    codec_attempts.append((codec_label(primary_codec_params), primary_codec_params))
+
+    if force_reencode and any(enc in primary_codec_params for enc in ('h264_nvenc', 'hevc_nvenc')):
+        cpu_params = params.copy()
+        cpu_params['video_codec'] = 'CPU (libx264)'
+        fallback_codec_params = _get_codec_params(cpu_params, True)
+        codec_attempts.append((codec_label(fallback_codec_params), fallback_codec_params))
 
     def final_progress_callback(pct):
         progress_queue.put(("progress", pct))
 
-    success = _execute_ffmpeg(cmd_final, total_duration, final_progress_callback, cancel_event, f"{log_prefix} (Final)", progress_queue)
+    success = False
+    total_attempts = len(codec_attempts)
+    for attempt_idx, (label, codec_params) in enumerate(codec_attempts, start=1):
+        if attempt_idx > 1:
+            progress_queue.put((
+                "status",
+                f"[{log_prefix}] Tentando novamente com {label} (tentativa {attempt_idx}/{total_attempts})...",
+                "warning",
+            ))
+            progress_queue.put(("progress", 0.0))
+
+        cmd_final_attempt = build_cmd(codec_params)
+        success = _execute_ffmpeg(cmd_final_attempt, total_duration, final_progress_callback, cancel_event, f"{log_prefix} (Final)", progress_queue)
+
+        if success or cancel_event.is_set():
+            break
+
+        if attempt_idx < total_attempts:
+            progress_queue.put((
+                "status",
+                f"[{log_prefix}] Falha ao renderizar com {label}. Alternando encoder...",
+                "warning",
+            ))
+
     if not success:
         return False
 
