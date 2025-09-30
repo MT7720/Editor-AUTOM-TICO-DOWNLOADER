@@ -39,23 +39,6 @@ try:
 except ImportError:
     video_processing_logic = None
 
-if video_processing_logic and hasattr(video_processing_logic, "LANGUAGE_CODE_MAP"):
-    LANGUAGE_CODE_MAP = video_processing_logic.LANGUAGE_CODE_MAP
-else:
-    LANGUAGE_CODE_MAP = {
-        "PT": "Português",
-        "ING": "Inglês",
-        "ESP": "Espanhol",
-        "FRAN": "Francês",
-        "BUL": "Búlgaro",
-        "ROM": "Romeno",
-        "ALE": "Alemão",
-        "GREGO": "Grego",
-        "ITA": "Italiano",
-        "POL": "Polonês",
-        "HOLAND": "Holandês",
-    }
-
 # --- Função para encontrar recursos (ícones, etc.) ---
 def resource_path(relative_path):
     """ Obtém o caminho absoluto para o recurso, funciona para dev e para PyInstaller """
@@ -143,8 +126,6 @@ class ConfigManager:
             'presenter_position': PRESENTER_POSITIONS[1], 'presenter_scale': 0.40,
             'presenter_chroma_enabled': False, 'presenter_chroma_color': '#00FF00',
             'presenter_chroma_similarity': 0.2, 'presenter_chroma_blend': 0.1, 'show_tech_logs': False,
-            'intro_enabled': False, 'intro_default_text': '', 'intro_texts': {},
-            'intro_language_code': 'auto',
         }
         try:
             if os.path.exists(CONFIG_FILE):
@@ -446,25 +427,26 @@ class VideoEditorApp:
         self.presenter_chroma_similarity_var = ttk.DoubleVar(value=self.config.get('presenter_chroma_similarity', 0.2))
         self.presenter_chroma_blend_var = ttk.DoubleVar(value=self.config.get('presenter_chroma_blend', 0.1))
         self.show_tech_logs_var = ttk.BooleanVar(value=self.config.get('show_tech_logs', False))
-        self.download_output_path_var = ttk.StringVar(value=self.config.get('last_download_folder', str(Path.home() / "Downloads")))
-        self.download_format_var = ttk.StringVar(value="MP4")
 
-        stored_intro_texts = self.config.get('intro_texts', {}) or {}
+        intro_texts_config = self.config.get('intro_texts', {}) or {}
         self.intro_enabled_var = ttk.BooleanVar(value=self.config.get('intro_enabled', False))
         self.intro_default_text_var = ttk.StringVar(value=self.config.get('intro_default_text', ''))
-        intro_code = self.config.get('intro_language_code', 'auto') or 'auto'
-        self.language_code_to_display = {'auto': 'Automático (usar idioma do item)'}
+        saved_intro_code = str(self.config.get('intro_language_code', 'auto') or 'auto').upper()
+        normalized_intro_code = 'auto' if saved_intro_code == 'AUTO' else saved_intro_code
+        self.intro_language_code_var = ttk.StringVar(value=normalized_intro_code)
+
+        self.language_code_to_display = {'auto': 'Automático (detectar pelo ficheiro)'}
         for code, name in LANGUAGE_CODE_MAP.items():
             self.language_code_to_display[code] = f"{name} ({code})"
         self.language_display_to_code = {label: code for code, label in self.language_code_to_display.items()}
-        if intro_code not in self.language_code_to_display:
-            intro_code = 'auto'
-        self.intro_language_code_var = ttk.StringVar(value=intro_code)
-        self.intro_language_display_var = ttk.StringVar(value=self.language_code_to_display[intro_code])
+        display_value = self.language_code_to_display.get(normalized_intro_code, self.language_code_to_display['auto'])
+        self.intro_language_display_var = ttk.StringVar(value=display_value)
+
         self.intro_text_vars: Dict[str, ttk.StringVar] = {
-            code: ttk.StringVar(value=stored_intro_texts.get(code, ''))
-            for code in LANGUAGE_CODE_MAP
+            code: ttk.StringVar(value=intro_texts_config.get(code, '')) for code in LANGUAGE_CODE_MAP.keys()
         }
+        self.download_output_path_var = ttk.StringVar(value=self.config.get('last_download_folder', str(Path.home() / "Downloads")))
+        self.download_format_var = ttk.StringVar(value="MP4")
 
         self.path_vars = {
             'narration_single': self.narration_file_single, 'subtitle_single': self.subtitle_file_single,
@@ -615,81 +597,66 @@ class VideoEditorApp:
         self.notebook.add(tab, text=" Editor: Introdução ")
         tab.columnconfigure(0, weight=1)
 
-        info_section = ttk.LabelFrame(tab, text=" Como funciona ", padding=15)
-        info_section.grid(row=0, column=0, sticky="ew")
-        info_section.columnconfigure(0, weight=1)
+        info_frame = ttk.LabelFrame(tab, text=" Como funciona ", padding=15)
+        info_frame.grid(row=0, column=0, sticky="ew")
+        info_frame.columnconfigure(0, weight=1)
 
         ttk.Label(
-            info_section,
+            info_frame,
             text=(
-                "1. Ative a introdução digitada para mostrar uma tela preta antes do vídeo.\n"
-                "2. Defina um texto padrão e personalize apenas os idiomas necessários.\n"
-                "3. Nos lotes, cada vídeo usa o texto configurado para o seu idioma."
+                "Mostre uma tela preta com texto digitando e som sincronizado antes do vídeo principal. "
+                "Ative o recurso, escolha um idioma padrão (ou mantenha em automático) e preencha os textos desejados."
             ),
             justify="left",
-            wraplength=900
+            wraplength=900,
         ).grid(row=0, column=0, sticky="w")
 
-        ttk.Label(
-            info_section,
-            text="O efeito e o áudio de digitação são criados automaticamente e sincronizados com o texto.",
-            justify="left",
-            wraplength=900
-        ).grid(row=1, column=0, sticky="w", pady=(10, 0))
-
-        settings_section = ttk.LabelFrame(tab, text=" Configuração rápida ", padding=15)
-        settings_section.grid(row=1, column=0, sticky="ew", pady=(20, 0))
-        settings_section.columnconfigure(1, weight=1)
+        config_frame = ttk.LabelFrame(tab, text=" Configuração rápida ", padding=15)
+        config_frame.grid(row=1, column=0, sticky="ew", pady=(20, 0))
+        config_frame.columnconfigure(1, weight=1)
 
         self.intro_state_widgets: List[Tuple[tk.Widget, str]] = []
 
-        self.intro_toggle = ttk.Checkbutton(
-            settings_section,
+        toggle = ttk.Checkbutton(
+            config_frame,
             text="Ativar introdução digitada antes do conteúdo",
             variable=self.intro_enabled_var,
-            command=self._update_intro_controls_state
+            command=self._update_intro_controls_state,
         )
-        self.intro_toggle.grid(row=0, column=0, columnspan=2, sticky="w")
-        ToolTip(self.intro_toggle, "Adiciona um texto digitado com som antes do vídeo principal.")
+        toggle.grid(row=0, column=0, columnspan=2, sticky="w")
 
-        ttk.Label(settings_section, text="Idioma base para vídeos únicos:").grid(row=1, column=0, sticky="w", pady=(10, 2))
+        ttk.Label(config_frame, text="Idioma padrão (vídeos únicos):").grid(row=1, column=0, sticky="w", pady=(12, 4))
         self.intro_language_combobox = ttk.Combobox(
-            settings_section,
+            config_frame,
             textvariable=self.intro_language_display_var,
             values=list(self.language_code_to_display.values()),
-            state="readonly"
+            state="readonly",
         )
-        self.intro_language_combobox.grid(row=1, column=1, sticky="ew", pady=(10, 2))
+        self.intro_language_combobox.grid(row=1, column=1, sticky="ew", pady=(12, 4))
         self.intro_language_combobox.bind("<<ComboboxSelected>>", self._on_intro_language_selected)
-        ToolTip(self.intro_language_combobox, "Define o idioma usado ao renderizar apenas um vídeo.")
         self.intro_state_widgets.append((self.intro_language_combobox, "combobox"))
 
-        ttk.Label(
-            settings_section,
-            text="Texto padrão (usado quando o idioma do vídeo não estiver configurado abaixo):"
-        ).grid(row=2, column=0, sticky="w", pady=(10, 2))
-        self.intro_default_entry = ttk.Entry(settings_section, textvariable=self.intro_default_text_var)
-        self.intro_default_entry.grid(row=2, column=1, sticky="ew", pady=(10, 2))
-        ToolTip(self.intro_default_entry, "Deixe em branco para pular a introdução quando não houver texto específico.")
+        ttk.Label(config_frame, text="Texto padrão (usado quando não há texto dedicado):").grid(row=2, column=0, sticky="w", pady=(12, 4))
+        self.intro_default_entry = ttk.Entry(config_frame, textvariable=self.intro_default_text_var)
+        self.intro_default_entry.grid(row=2, column=1, sticky="ew", pady=(12, 4))
         self.intro_state_widgets.append((self.intro_default_entry, "entry"))
 
-        languages_section = ttk.LabelFrame(tab, text=" Textos por idioma ", padding=15)
-        languages_section.grid(row=2, column=0, sticky="ew", pady=(20, 0))
-        languages_section.columnconfigure(1, weight=1)
+        languages_frame = ttk.LabelFrame(tab, text=" Textos por idioma ", padding=15)
+        languages_frame.grid(row=2, column=0, sticky="ew", pady=(20, 0))
+        languages_frame.columnconfigure(1, weight=1)
 
         ttk.Label(
-            languages_section,
-            text="Preencha apenas os idiomas necessários. Os demais usarão o texto padrão automaticamente.",
+            languages_frame,
+            text="Preencha apenas os idiomas necessários. Os demais utilizam o texto padrão automaticamente.",
             justify="left",
-            wraplength=900
+            wraplength=900,
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         self.intro_language_entries: List[ttk.Entry] = []
         for idx, (code, name) in enumerate(LANGUAGE_CODE_MAP.items(), start=1):
-            ttk.Label(languages_section, text=f"{name} ({code}):").grid(row=idx, column=0, sticky="w", padx=(0, 10), pady=2)
-            entry = ttk.Entry(languages_section, textvariable=self.intro_text_vars[code])
+            ttk.Label(languages_frame, text=f"{name} ({code}):").grid(row=idx, column=0, sticky="w", padx=(0, 10), pady=2)
+            entry = ttk.Entry(languages_frame, textvariable=self.intro_text_vars[code])
             entry.grid(row=idx, column=1, sticky="ew", pady=2)
-            ToolTip(entry, f"Texto exibido nos vídeos em {name}.")
             self.intro_language_entries.append(entry)
             self.intro_state_widgets.append((entry, "entry"))
 
@@ -707,9 +674,9 @@ class VideoEditorApp:
         for widget, widget_type in getattr(self, 'intro_state_widgets', []):
             target_state = combo_state if widget_type == 'combobox' else entry_state
             try:
-                widget.config(state=target_state)
-            except tk.TclError:
                 widget.configure(state=target_state)
+            except tk.TclError:
+                pass
 
     def _create_video_tab(self):
         # ... (sem alterações) ...
@@ -1533,21 +1500,9 @@ class VideoEditorApp:
     def _gather_processing_params(self) -> Dict[str, Any]:
         # ... (sem alterações) ...
         params = {var_name.replace("_var", ""): var_obj.get() for var_name, var_obj in self.__dict__.items() if isinstance(var_obj, (tk.Variable, tk.StringVar))}
-        params.pop('intro_language_display', None)
         for key, path_val in params.items():
             if isinstance(path_val, str) and path_val and ("_path" in key or "_folder" in key or "_file" in key):
                 params[key] = os.path.normpath(os.path.abspath(path_val))
-        params['intro_language_code'] = params.get('intro_language_code') or 'auto'
-        params['intro_enabled'] = bool(self.intro_enabled_var.get())
-        params['intro_default_text'] = (self.intro_default_text_var.get() or '').strip()
-        params['intro_texts'] = {
-            code: text_value
-            for code, text_value in (
-                (code, (var.get() or '').strip())
-                for code, var in self.intro_text_vars.items()
-            )
-            if text_value
-        }
         params['slideshow_transition'] = SLIDESHOW_TRANSITIONS.get(self.transition_name_var.get(), 'fade')
         params['available_encoders'] = self.available_encoders_cache
         try:
@@ -1563,6 +1518,11 @@ class VideoEditorApp:
                                    'font_file': self.subtitle_font_file.get(), 'position_map': SUBTITLE_POSITIONS}
         params['effect_blend_mode'] = EFFECT_BLEND_MODES.get(self.effect_blend_mode_var.get(), 'screen')
         params['intro_phrase_enabled'] = False
+        params['intro_texts'] = {
+            code: text for code, text in (
+                (code, var.get().strip()) for code, var in self.intro_text_vars.items()
+            ) if text
+        }
         params['show_tech_logs'] = self.show_tech_logs_var.get()
         logger.debug(f"Parâmetros finais coletados: {json.dumps(params, indent=2, default=str)}")
         return params
@@ -1863,9 +1823,9 @@ class VideoEditorApp:
             'intro_default_text': self.intro_default_text_var.get(),
             'intro_language_code': self.intro_language_code_var.get(),
             'intro_texts': {
-                code: var.get()
-                for code, var in self.intro_text_vars.items()
-                if var.get()
+                code: value for code, value in (
+                    (code, var.get()) for code, var in self.intro_text_vars.items()
+                ) if value.strip()
             },
         }
         ConfigManager.save_config(config_to_save)
