@@ -864,6 +864,7 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
     last_activity_time = time.monotonic()
     last_warning_bucket = 0
     stalled = False
+    last_nonempty_line = ""
 
     while process.poll() is None:
         if cancel_event.is_set():
@@ -905,6 +906,7 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
                 else:
                     stripped_line = line.strip()
                     if stripped_line:
+                        last_nonempty_line = stripped_line
                         logger.debug(f"[{log_prefix}/ffmpeg] {stripped_line}")
         except Empty:
             elapsed = time.monotonic() - last_activity_time
@@ -961,10 +963,17 @@ def _execute_ffmpeg(cmd: List[str], duration: float, progress_callback: Optional
             process.returncode = -1
         if stalled:
             logger.error(f"[{log_prefix}] FFmpeg interrompido por falta de progresso.")
-            progress_queue.put(("status", f"[{log_prefix}] FFmpeg interrompido por falta de progresso.", "error"))
+            stall_detail = last_nonempty_line or "Nenhuma mensagem adicional do FFmpeg."
+            progress_queue.put((
+                "status",
+                f"[{log_prefix}] FFmpeg interrompido por falta de progresso. Última saída conhecida: {stall_detail}",
+                "error",
+            ))
         logger.error(f"[{log_prefix}] FFmpeg falhou com o código {process.returncode}.")
         logger.error(f"[{log_prefix}] Log FFmpeg:\n{full_output}")
         error_lines = [line for line in full_output.lower().splitlines() if 'error' in line or 'invalid' in line]
+        if not error_lines and last_nonempty_line:
+            error_lines = [last_nonempty_line]
         error_snippet = "\n".join(error_lines[-3:]) if error_lines else "\n".join(full_output.strip().split("\n")[-5:])
 
         progress_queue.put(("status", f"[{log_prefix}] ERRO no FFmpeg: {error_snippet}", "error"))
@@ -1742,24 +1751,72 @@ def _combine_intro_with_main(
 
     progress_queue.put(("status", f"[{log_prefix}] Combinando introdução com o vídeo principal...", "info"))
 
-    cmd_merge = [
+    base_cmd = [
         params['ffmpeg_path'], '-y',
         '-i', intro_path,
         '-i', main_content_path,
         '-filter_complex', filter_complex,
         *map_args,
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p'
     ]
 
-    if audio_mapping_done:
-        cmd_merge.extend(['-c:a', 'aac', '-b:a', '192k'])
+    codec_attempts: List[Tuple[str, List[str]]] = []
 
-    cmd_merge.extend(['-movflags', '+faststart', final_output_path])
+    def codec_label(codec_params: List[str]) -> str:
+        if any(enc in codec_params for enc in ('h264_nvenc', 'hevc_nvenc')):
+            return 'GPU (NVENC)'
+        if any(enc in codec_params for enc in ('libx264', 'libx265')):
+            return 'CPU (libx264)'
+        if 'copy' in codec_params:
+            return 'Cópia direta'
+        return 'Encoder padrão'
+
+    primary_codec_params = _get_codec_params(params, True)
+    codec_attempts.append((codec_label(primary_codec_params), primary_codec_params))
+
+    if any(enc in primary_codec_params for enc in ('h264_nvenc', 'hevc_nvenc')):
+        cpu_params = params.copy()
+        cpu_params['video_codec'] = 'CPU (libx264)'
+        fallback_params = _get_codec_params(cpu_params, True)
+        codec_attempts.append((codec_label(fallback_params), fallback_params))
+
+    audio_args = ['-c:a', 'aac', '-b:a', '192k'] if audio_mapping_done else ['-c:a', 'copy']
+
+    time_args: List[str] = []
+    if total_duration > 0:
+        time_args.extend(['-t', f"{total_duration:.6f}"])
+    time_args.append('-shortest')
+
+    output_args = ['-movflags', '+faststart', final_output_path]
 
     def merge_progress(pct: float):
         progress_queue.put(("progress", min(1.0, pct)))
 
-    return _execute_ffmpeg(cmd_merge, total_duration or intro_info.get('duration', 5), merge_progress, cancel_event, f"{log_prefix} (Intro Merge)", progress_queue)
+    success = False
+    total_attempts = len(codec_attempts)
+
+    for attempt_idx, (label, codec_params) in enumerate(codec_attempts, start=1):
+        cmd_merge = [*base_cmd, *codec_params, *audio_args, *time_args, *output_args]
+
+        success = _execute_ffmpeg(
+            cmd_merge,
+            total_duration or intro_info.get('duration', 5),
+            merge_progress,
+            cancel_event,
+            f"{log_prefix} (Intro Merge - {label})",
+            progress_queue,
+        )
+
+        if success or cancel_event.is_set():
+            break
+
+        if attempt_idx < total_attempts:
+            progress_queue.put((
+                "status",
+                f"[{log_prefix}] Falha ao mesclar com {label}. Alternando encoder...",
+                "warning",
+            ))
+
+    return success
 
 
 def _perform_final_pass(
