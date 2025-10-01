@@ -198,7 +198,7 @@ class VideoEditorApp:
 
         self.batch_hierarchical_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_hierarchical_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_hierarchical_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(self.batch_hierarchical_inputs_frame, 0, "Pasta Raiz:", 'batch_root', lambda: self.select_folder('batch_root', "Selecione a Pasta Raiz com as subpastas numéricas"))
-        self._create_file_input(self.batch_hierarchical_inputs_frame, 1, "Pasta de Imagens:", 'batch_image', lambda: self.select_folder('batch_image', "Selecione a Pasta de Imagens"))
+        self._create_file_input(self.batch_hierarchical_inputs_frame, 1, "Pasta de Vídeos:", 'batch_image', lambda: self.select_folder('batch_image', "Selecione a Pasta de Vídeos"))
         
         # --- Pasta de Saída (RESTAURADA) ---
         output_section = ttk.LabelFrame(tab, text=" Local de Saída ", padding=15)
@@ -941,7 +941,7 @@ class VideoEditorApp:
         is_batch_hierarchical = normalized_mode == "batch_image_hierarchical"
         is_batch_mixed = normalized_mode == "batch_mixed"
         is_any_batch = is_batch_video or is_batch_image or is_batch_hierarchical or is_batch_mixed
-        is_any_slideshow = is_slideshow or is_batch_image or is_batch_hierarchical or is_batch_mixed
+        is_any_slideshow = is_slideshow or is_batch_image or is_batch_mixed
 
         frames_to_manage = {
             self.single_inputs_frame: is_single_video or is_slideshow,

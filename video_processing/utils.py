@@ -214,11 +214,26 @@ def _create_concatenated_audio(
         if props and props.get('format', {}).get('duration'):
             total_duration += float(props['format']['duration'])
 
+    codec_args: List[str]
+    output_suffix = Path(output_path).suffix.lower()
+
+    forced_codec = params.get('music_concat_codec')
+    forced_bitrate = params.get('music_concat_bitrate', '192k')
+
+    if forced_codec:
+        codec_args = ['-c:a', forced_codec]
+        if forced_codec != 'copy':
+            codec_args += ['-b:a', str(forced_bitrate)]
+    elif output_suffix in {'.m4a', '.mp4', '.m4v', '.mov', '.mkv'}:
+        codec_args = ['-c:a', 'aac', '-b:a', str(forced_bitrate)]
+    else:
+        codec_args = ['-c', 'copy']
+
     cmd = [
         params['ffmpeg_path'], '-y',
         '-f', 'concat', '-safe', '0',
         '-i', concat_file,
-        '-c', 'copy',
+        *codec_args,
         output_path,
     ]
 
