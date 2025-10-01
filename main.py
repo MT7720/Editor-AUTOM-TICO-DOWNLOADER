@@ -14,6 +14,7 @@ import platform
 from datetime import datetime
 import ttkbootstrap as ttk # Importa ttkbootstrap aqui
 import license_checker
+from security import SecurityViolation, enforce_runtime_safety
 import gui
 import gui.config_manager as gui_config_manager
 from gui import (
@@ -101,6 +102,24 @@ if __name__ == "__main__":
     print(f"--- Iniciando {APP_NAME} em {datetime.now()} ---")
     print(f"Sistema Operacional: {platform.system()} {platform.release()}")
     print(f"Versão do Python: {sys.version}")
+
+    try:
+        enforce_runtime_safety()
+    except SecurityViolation as exc:
+        print("Falha na verificação de segurança. Encerrando a aplicação.", file=sys.stderr)
+        print(str(exc), file=sys.stderr)
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            messagebox.showerror(APP_NAME, f"Violação de segurança detectada:\n{exc}")
+            temp_root.destroy()
+        except Exception:
+            # Evita que falhas gráficas ocultem a violação de segurança registrada no log.
+            pass
+        sys.exit(2)
 
     if "--help" in sys.argv or "-h" in sys.argv:
         print_usage()
