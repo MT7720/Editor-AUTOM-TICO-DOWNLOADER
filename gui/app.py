@@ -179,30 +179,40 @@ class VideoEditorApp:
         if not self._license_id or self._license_termination_initiated:
             return
         fingerprint = self._license_fingerprint or license_checker.get_machine_fingerprint()
+        license_key = None
+        if isinstance(self.license_data, dict):
+            license_key = self.license_data.get("meta", {}).get("key")
+
+        payload = None
+        error = None
         try:
-            response = license_checker.validate_license_with_id(self._license_id, fingerprint)
+            payload, error = license_checker.validate_license_with_id(
+                self._license_id, fingerprint, license_key
+            )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Erro inesperado ao contactar o servidor de licenças.", exc_info=exc)
-            response = None
+            error = str(exc)
 
-        if not response:
+        if error or not payload:
             self._license_check_failures += 1
             logger.warning(
                 "Não foi possível validar a licença (falha de rede %s). Nova tentativa em %s segundos.",
                 self._license_check_failures,
                 self._license_check_delay_ms(initial=False) / 1000,
             )
+            if error:
+                logger.debug("Motivo da falha na validação da licença: %s", error)
             self._schedule_license_check()
             return
 
-        if response.get("meta", {}).get("valid"):
+        if payload.get("meta", {}).get("valid"):
             if self._license_check_failures:
                 logger.info("Conectividade restabelecida. Licença validada novamente com o servidor.")
             self._license_check_failures = 0
             self._schedule_license_check()
             return
 
-        detail = response.get("meta", {}).get("detail") or "A licença está expirada ou inválida."
+        detail = payload.get("meta", {}).get("detail") or "A licença está expirada ou inválida."
         logger.error("Licença inválida detectada: %s", detail)
         self._handle_invalid_license(detail)
 
