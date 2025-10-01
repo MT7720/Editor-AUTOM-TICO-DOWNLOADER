@@ -966,7 +966,7 @@ class VideoEditorApp:
         if is_single_video or is_slideshow:
             self.media_path_label_widget.winfo_children()[0].config(text="Pasta de Imagens:" if is_slideshow else "Ficheiro de Vídeo:")
         self.notebook.tab(1, text="Editor: Vídeo & Slideshow" if is_any_slideshow else "Editor: Vídeo")
-        if is_batch_image or is_batch_hierarchical or is_batch_mixed: self.video_settings_section.grid_remove()
+        if is_batch_image or is_batch_mixed: self.video_settings_section.grid_remove()
         else: self.video_settings_section.grid()
 
     def select_media_single(self):

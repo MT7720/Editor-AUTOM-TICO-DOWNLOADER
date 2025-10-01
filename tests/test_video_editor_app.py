@@ -61,3 +61,11 @@ def test_update_ui_for_media_type(app):
     assert not _visible(app.single_inputs_frame)
     assert _visible(app.batch_inputs_frame)
     assert not _visible(app.slideshow_section)
+
+    app.media_type.set("batch_image_hierarchical")
+    app.update_ui_for_media_type()
+    app.root.update()
+    assert _visible(app.batch_inputs_frame)
+    assert _visible(app.batch_hierarchical_inputs_frame)
+    assert _visible(app.video_settings_section)
+    assert not _visible(app.slideshow_section)
