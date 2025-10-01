@@ -261,6 +261,15 @@ def get_product_token() -> str:
     )
 
 
+def _get_product_token_optional() -> Optional[str]:
+    """Retorna o token de produto se disponível, sem lançar exceções."""
+    try:
+        return get_product_token()
+    except RuntimeError:
+        logger.info("Token de produto não configurado. Tentando autenticação com a chave de licença.")
+        return None
+
+
 def _derive_encryption_key(fingerprint: str) -> bytes:
     return hashlib.sha256(fingerprint.encode("utf-8")).digest()
 
@@ -458,10 +467,25 @@ def get_machine_fingerprint():
 
     return hashlib.sha256(identifier.encode("utf-8")).hexdigest()
 
-def validate_license_with_id(license_id, fingerprint) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def _build_auth_headers(license_key: Optional[str] = None) -> Tuple[Dict[str, str], Optional[str]]:
+    headers = {"Accept": "application/vnd.api+json"}
+    token = _get_product_token_optional()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        return headers, None
+    if license_key:
+        headers["Authorization"] = f"License {license_key}"
+        headers["Keygen-License"] = license_key
+        return headers, None
+    return headers, "Não foi possível autenticar a requisição ao servidor de licenças."
+
+
+def validate_license_with_id(license_id, fingerprint, license_key: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     # ... (O conteúdo desta função não muda)
-    token = get_product_token()
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.api+json"}
+    headers, auth_error = _build_auth_headers(license_key)
+    if auth_error:
+        logger.warning("Não foi possível obter credenciais para validar a licença %s.", license_id)
+        return None, auth_error
     try:
         response = requests.post(
             f"{API_BASE_URL}/licenses/{license_id}/actions/validate",
@@ -511,15 +535,18 @@ def activate_new_license(license_key, fingerprint):
             "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}},
         }
     }
+    auth_headers, auth_error = _build_auth_headers(license_key)
+    if auth_error:
+        return None, auth_error
     try:
-        token = get_product_token()
         r = requests.post(
             f"{API_BASE_URL}/machines",
             json=activation_payload,
-            headers={"Authorization": f"Bearer {token}", **headers},
+            headers={**auth_headers, **headers},
             timeout=REQUEST_TIMEOUT,
         )
         r.raise_for_status()
+        validation_data.setdefault("meta", {})["key"] = license_key
         return validation_data, "Ativação bem-sucedida."
     except requests.exceptions.Timeout:
         logger.warning("Tempo limite ao ativar a licença para a máquina.")
@@ -567,20 +594,6 @@ def load_license_data(fingerprint: Optional[str] = None):
 
 def check_license(parent_window): # MODIFICADO: Recebe a janela pai
     """Função principal que gere o fluxo de verificação de licença."""
-    try:
-        get_product_token()
-    except RuntimeError as exc:
-        messagebox.showerror(
-            "Token de produto indisponível",
-            (
-                f"{exc}\n\n"
-                "Reinstale a aplicação para restaurar os ficheiros necessários "
-                "ou contacte o suporte técnico para assistência."
-            ),
-            parent=parent_window,
-        )
-        return False, None
-
     fingerprint = get_machine_fingerprint()
     try:
         stored_data = load_license_data(fingerprint)
@@ -592,8 +605,10 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
         )
         stored_data = None
 
+    stored_license_key = None
     if stored_data:
         license_id = stored_data.get("data", {}).get("id")
+        stored_license_key = stored_data.get("meta", {}).get("key")
         if license_id:
             validation_payload, spinner_error = _run_with_spinner(
                 parent_window,
@@ -601,6 +616,7 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
                 validate_license_with_id,
                 license_id,
                 fingerprint,
+                stored_license_key,
                 timeout=REQUEST_TIMEOUT,
             )
 
@@ -645,7 +661,7 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
     while True:
         # Usa a janela principal (escondida) como pai para o diálogo.
         dialog = CustomLicenseDialog(parent_window)
-        license_key_input = dialog.result
+        license_key_input = (dialog.result or "").strip()
 
         if not license_key_input:
             messagebox.showwarning("Ativação Necessária", "É necessária uma chave de licença para usar este programa.", parent=parent_window)
@@ -679,6 +695,7 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
 
         if activation_data:
             messagebox.showinfo("Sucesso", "A sua licença foi ativada com sucesso nesta máquina!", parent=parent_window)
+            activation_data.setdefault("meta", {})["key"] = license_key_input
             save_license_data(activation_data, fingerprint)
             return True, activation_data
         else:
