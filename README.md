@@ -16,7 +16,7 @@ Depois de validada, a aplicação continua a verificar periodicamente o status d
 
 O token do produto utilizado para contactar a API da Keygen **não** está mais presente no código-fonte. Durante o build (ou execução em desenvolvimento), defina a variável de ambiente `KEYGEN_PRODUCT_TOKEN` ou forneça um caminho através de `KEYGEN_PRODUCT_TOKEN_FILE` apontando para um ficheiro seguro contendo o token. Os pipelines de CI/CD devem injectar esse segredo antes de executar os testes ou distribuir os binários.
 
-O ficheiro `license.json` armazenado no diretório de dados da aplicação é agora cifrado com AES-GCM usando uma chave derivada do _fingerprint_ da máquina. Cada payload inclui um _hash_ autenticado; qualquer tentativa de adulteração resulta na eliminação do ficheiro e na necessidade de reativação manual da licença.
+O ficheiro `license.json` armazenado no diretório de dados da aplicação é agora cifrado com AES-GCM usando uma chave derivada do _fingerprint_ da máquina. Esse identificador é obtido preferencialmente através de APIs nativas do Windows (MachineGuid, SMBIOS ou número de série do volume) e apenas recorre a dados multiplataforma (`uuid.getnode` e `platform.uname`) como último recurso, eliminando dependências de comandos externos. Cada payload inclui um _hash_ autenticado; qualquer tentativa de adulteração resulta na eliminação do ficheiro e na necessidade de reativação manual da licença.
 
 ## Organização das abas do editor
 

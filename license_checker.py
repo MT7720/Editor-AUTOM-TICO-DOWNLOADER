@@ -6,7 +6,7 @@ import sys
 import hashlib
 import logging
 import platform
-import subprocess
+import uuid
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
@@ -292,26 +292,155 @@ def _decrypt_license_payload(payload: Dict[str, Any], fingerprint: str) -> Dict[
     except Exception as exc:  # pragma: no cover - defensive
         raise LicenseTamperedError("Conteúdo inválido no ficheiro de licença.") from exc
 
-def get_machine_fingerprint():
-    # ... (O conteúdo desta função não muda)
-    identifier = None
-    if platform.system() == "Windows":
+def _get_windows_machine_guid() -> Optional[str]:
+    try:  # pragma: no cover - exercitado via testes com monkeypatch
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Cryptography",
+            0,
+            winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+        )
         try:
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
             value, _ = winreg.QueryValueEx(key, "MachineGuid")
+        finally:
             winreg.CloseKey(key)
-            identifier = value
-        except Exception: pass
-    if not identifier and platform.system() == "Windows":
+        if isinstance(value, str) and value:
+            return value
+    except Exception:
+        logger.debug("Falha ao ler MachineGuid do registo do Windows.", exc_info=True)
+    return None
+
+
+def _parse_smbios_system_uuid(blob: bytes) -> Optional[str]:
+    offset = 0
+    total = len(blob)
+    while offset + 4 <= total:
+        struct_type = blob[offset]
+        struct_length = blob[offset + 1]
+        if struct_length < 4 or offset + struct_length > total:
+            break
+        if struct_type == 1 and struct_length >= 0x19:
+            raw = blob[offset + 8 : offset + 24]
+            if len(raw) == 16 and any(raw):
+                try:
+                    return str(uuid.UUID(bytes_le=bytes(raw)))
+                except ValueError:
+                    logger.debug("UUID SMBIOS inválido encontrado.", exc_info=True)
+        next_offset = offset + struct_length
+        while next_offset < total:
+            if blob[next_offset] == 0:
+                if next_offset + 1 >= total or blob[next_offset + 1] == 0:
+                    next_offset += 2
+                    break
+            next_offset += 1
+        if next_offset <= offset:
+            break
+        offset = next_offset
+    return None
+
+
+def _get_windows_firmware_uuid() -> Optional[str]:
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        rsmb = int.from_bytes(b"RSMB", "little")
+        size = kernel32.GetSystemFirmwareTable(rsmb, 0, None, 0)
+        if not size:
+            return None
+        buffer = (ctypes.c_ubyte * size)()
+        read = kernel32.GetSystemFirmwareTable(rsmb, 0, ctypes.byref(buffer), size)
+        if read != size:
+            return None
+        return _parse_smbios_system_uuid(bytes(buffer))
+    except Exception:
+        logger.debug("Não foi possível obter o UUID SMBIOS através do firmware.", exc_info=True)
+        return None
+
+
+def _get_windows_volume_serial() -> Optional[str]:
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        serial_number = wintypes.DWORD()
+        max_component_length = wintypes.DWORD()
+        file_system_flags = wintypes.DWORD()
+        volume_name_buffer = ctypes.create_unicode_buffer(1024)
+        file_system_name_buffer = ctypes.create_unicode_buffer(1024)
+        root_path = os.environ.get("SystemDrive", "C:")
+        if not root_path.endswith("\\"):
+            root_path += "\\"
+        success = kernel32.GetVolumeInformationW(
+            ctypes.c_wchar_p(root_path),
+            volume_name_buffer,
+            len(volume_name_buffer),
+            ctypes.byref(serial_number),
+            ctypes.byref(max_component_length),
+            ctypes.byref(file_system_flags),
+            file_system_name_buffer,
+            len(file_system_name_buffer),
+        )
+        if success:
+            return f"{serial_number.value:08X}"
+    except Exception:
+        logger.debug("Não foi possível obter o número de série do volume do sistema.", exc_info=True)
+    return None
+
+
+def _get_portable_fingerprint_source() -> str:
+    node = uuid.getnode()
+    uname = platform.uname()
+    components = [f"{node:012x}"]
+    components.extend(
+        filter(
+            None,
+            [
+                uname.system,
+                uname.node,
+                uname.machine,
+                uname.processor,
+                uname.version,
+            ],
+        )
+    )
+    return "-".join(components)
+
+
+def get_machine_fingerprint():
+    identifier = None
+    strategies = []
+    if platform.system() == "Windows":
+        strategies.extend(
+            [
+                ("MachineGuid", _get_windows_machine_guid),
+                ("FirmwareUUID", _get_windows_firmware_uuid),
+                ("VolumeSerial", _get_windows_volume_serial),
+            ]
+        )
+    strategies.append(("PortableFallback", _get_portable_fingerprint_source))
+
+    for label, strategy in strategies:
         try:
-            output = subprocess.check_output("wmic csproduct get uuid", shell=True, text=True, stderr=subprocess.DEVNULL)
-            value = output.split('\n')[1].strip()
-            if len(value) > 5: identifier = value
-        except Exception: pass
+            candidate = strategy()
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("Erro inesperado ao calcular identificador %s.", label, exc_info=True)
+            continue
+        if candidate:
+            identifier = str(candidate)
+            logger.debug("Fingerprint obtido usando estratégia %s.", label)
+            break
+
     if not identifier:
-        identifier = f"{platform.system()}-{platform.node()}-{platform.machine()}"
-    return hashlib.sha256(identifier.encode()).hexdigest()
+        identifier = _get_portable_fingerprint_source()
+        logger.warning(
+            "Todas as estratégias de fingerprint falharam; a alternativa multiplataforma foi utilizada."
+        )
+
+    return hashlib.sha256(identifier.encode("utf-8")).hexdigest()
 
 def validate_license_with_id(license_id, fingerprint) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     # ... (O conteúdo desta função não muda)
