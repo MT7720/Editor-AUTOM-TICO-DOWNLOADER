@@ -2,3 +2,5 @@ ttkbootstrap
 requests
 Pillow
 deep-translator
+yt-dlp
+pyvirtualdisplay

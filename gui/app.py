@@ -63,9 +63,13 @@ from .utils import configure_file_logging, logger
 
 
 class VideoEditorApp:
-    def __init__(self, root, license_data=None):
-        self.root = root
-        
+    def __init__(self, root: Optional[ttk.Window] = None, license_data=None):
+        self._owns_root = root is None
+        self.root = root or ttk.Window(themename="superhero")
+
+        if self._owns_root:
+            self.root.withdraw()
+
         self.root.title(APP_NAME)
         if platform.system() == "Windows":
             try:
@@ -169,23 +173,25 @@ class VideoEditorApp:
         self.media_path_label_widget = self._create_file_input(self.single_inputs_frame, 0, "Mídia Principal:", 'media_single', self.select_media_single)
         self._create_file_input(self.single_inputs_frame, 1, "Narração (Áudio):", 'narration_single', lambda: self.select_file('narration_single', "Selecione a Narração", SUPPORTED_NARRATION_FT))
         self._create_file_input(self.single_inputs_frame, 2, "Legenda (SRT):", 'subtitle_single', lambda: self.select_file('subtitle_single', "Selecione a Legenda", SUPPORTED_SUBTITLE_FT))
-        
-        self.batch_video_inputs_frame = ttk.Frame(inputs_container); self.batch_video_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_video_inputs_frame.columnconfigure(0, weight=1)
+
+        self.batch_inputs_frame = ttk.Frame(inputs_container); self.batch_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_inputs_frame.columnconfigure(0, weight=1)
+
+        self.batch_video_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_video_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_video_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(self.batch_video_inputs_frame, 0, "Pasta de Vídeos:", 'batch_video', lambda: self.select_folder('batch_video', "Selecione a Pasta de Vídeos"))
         self._create_file_input(self.batch_video_inputs_frame, 1, "Pasta de Áudios:", 'batch_audio', lambda: self.select_folder('batch_audio', "Selecione a Pasta de Áudios"))
         self._create_file_input(self.batch_video_inputs_frame, 2, "Pasta de Legendas:", 'batch_srt', lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas"))
 
-        self.batch_image_inputs_frame = ttk.Frame(inputs_container); self.batch_image_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_image_inputs_frame.columnconfigure(0, weight=1)
+        self.batch_image_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_image_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_image_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(self.batch_image_inputs_frame, 0, "Pasta de Imagens:", 'batch_image', lambda: self.select_folder('batch_image', "Selecione a Pasta de Imagens"))
         self._create_file_input(self.batch_image_inputs_frame, 1, "Pasta de Áudios:", 'batch_audio', lambda: self.select_folder('batch_audio', "Selecione a Pasta de Áudios"))
         self._create_file_input(self.batch_image_inputs_frame, 2, "Pasta de Legendas:", 'batch_srt', lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas"))
 
-        self.batch_mixed_inputs_frame = ttk.Frame(inputs_container); self.batch_mixed_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_mixed_inputs_frame.columnconfigure(0, weight=1)
+        self.batch_mixed_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_mixed_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_mixed_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(self.batch_mixed_inputs_frame, 0, "Pasta de Mídia:", 'batch_mixed_media_folder', lambda: self.select_folder('batch_mixed_media_folder', "Selecione a Pasta com Vídeos e Imagens"))
         self._create_file_input(self.batch_mixed_inputs_frame, 1, "Pasta de Áudios:", 'batch_audio', lambda: self.select_folder('batch_audio', "Selecione a Pasta de Áudios"))
         self._create_file_input(self.batch_mixed_inputs_frame, 2, "Pasta de Legendas:", 'batch_srt', lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas"))
 
-        self.batch_hierarchical_inputs_frame = ttk.Frame(inputs_container); self.batch_hierarchical_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_hierarchical_inputs_frame.columnconfigure(0, weight=1)
+        self.batch_hierarchical_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_hierarchical_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_hierarchical_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(self.batch_hierarchical_inputs_frame, 0, "Pasta Raiz:", 'batch_root', lambda: self.select_folder('batch_root', "Selecione a Pasta Raiz com as subpastas numéricas"))
         self._create_file_input(self.batch_hierarchical_inputs_frame, 1, "Pasta de Imagens:", 'batch_image', lambda: self.select_folder('batch_image', "Selecione a Pasta de Imagens"))
         
@@ -923,14 +929,18 @@ class VideoEditorApp:
     def update_ui_for_media_type(self, event=None):
         # ... (sem alterações) ...
         mode = self.media_type.get()
-        is_single_video, is_slideshow = (mode == "video_single"), (mode == "image_folder")
-        is_batch_video, is_batch_image = (mode == "batch_video"), (mode == "batch_image")
-        is_batch_hierarchical, is_batch_mixed = (mode == "batch_image_hierarchical"), (mode == "batch_mixed")
+        normalized_mode = "batch_video" if mode == "batch" else mode
+        is_single_video, is_slideshow = (normalized_mode == "video_single"), (normalized_mode == "image_folder")
+        is_batch_video = normalized_mode == "batch_video"
+        is_batch_image = normalized_mode == "batch_image"
+        is_batch_hierarchical = normalized_mode == "batch_image_hierarchical"
+        is_batch_mixed = normalized_mode == "batch_mixed"
         is_any_batch = is_batch_video or is_batch_image or is_batch_hierarchical or is_batch_mixed
         is_any_slideshow = is_slideshow or is_batch_image or is_batch_hierarchical or is_batch_mixed
-        
+
         frames_to_manage = {
             self.single_inputs_frame: is_single_video or is_slideshow,
+            self.batch_inputs_frame: is_any_batch,
             self.batch_video_inputs_frame: is_batch_video,
             self.batch_image_inputs_frame: is_batch_image,
             self.batch_hierarchical_inputs_frame: is_batch_hierarchical,
@@ -1155,8 +1165,12 @@ class VideoEditorApp:
             video_height = int(re.search(r'(\d+)x(\d+)', res_str).group(2)) if res_str and re.search(r'(\d+)x(\d+)', res_str) else None
             self.root.update_idletasks()
             preview_height = self.subtitle_preview.winfo_height() if hasattr(self, 'subtitle_preview') and self.subtitle_preview else None
-            adjusted_font_size = max(1, int(round(slider_font_size * (video_height / float(preview_height))))) if video_height and preview_height and preview_height > 0 else slider_font_size
-        except Exception: adjusted_font_size = int(self.subtitle_fontsize_var.get())
+            if video_height and preview_height and preview_height >= 10:
+                adjusted_font_size = max(1, int(round(slider_font_size * (video_height / float(preview_height)))))
+            else:
+                adjusted_font_size = slider_font_size
+        except Exception:
+            adjusted_font_size = int(self.subtitle_fontsize_var.get())
         params['subtitle_style'] = {'fontsize': adjusted_font_size, 'text_color': self.subtitle_textcolor_var.get(), 'outline_color': self.subtitle_outlinecolor_var.get(),
                                    'bold': self.subtitle_bold_var.get(), 'italic': self.subtitle_italic_var.get(), 'position': self.subtitle_position_var.get(),
                                    'font_file': self.subtitle_font_file.get(), 'position_map': SUBTITLE_POSITIONS}

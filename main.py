@@ -15,6 +15,7 @@ from datetime import datetime
 import ttkbootstrap as ttk # Importa ttkbootstrap aqui
 import license_checker
 import gui
+import gui.config_manager as gui_config_manager
 from gui import (
     VideoEditorApp,
     SUBTITLE_POSITIONS,
@@ -22,6 +23,7 @@ from gui import (
     ConfigManager as _ConfigManager,
     APP_NAME,
 )
+from gui import constants as gui_constants
 
 __all__ = [
     "ConfigManager",
@@ -32,6 +34,13 @@ __all__ = [
 ]
 
 CONFIG_FILE = _CONFIG_FILE
+
+
+def _sync_config_file_path() -> None:
+    """Keep GUI modules aware of the overridden config path."""
+    gui.CONFIG_FILE = CONFIG_FILE
+    gui_constants.CONFIG_FILE = CONFIG_FILE
+    gui_config_manager.CONFIG_FILE = CONFIG_FILE
 
 
 def setup_crash_log():
@@ -68,13 +77,13 @@ class ConfigManager:
     @staticmethod
     def load_config() -> dict:
         global CONFIG_FILE
-        gui.CONFIG_FILE = CONFIG_FILE
+        _sync_config_file_path()
         return _ConfigManager.load_config()
 
     @staticmethod
     def save_config(config: dict) -> None:
         global CONFIG_FILE
-        gui.CONFIG_FILE = CONFIG_FILE
+        _sync_config_file_path()
         _ConfigManager.save_config(config)
 
 def print_usage() -> None:
