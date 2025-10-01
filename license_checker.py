@@ -208,6 +208,105 @@ class CustomLicenseDialog(ttk.Toplevel):
         self.result = None
         self.destroy()
 
+
+class ProductTokenDialog(ttk.Toplevel):
+    """Janela para configuração do token de produto (API) do Keygen."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.transient(parent)
+        self.title("Configurar Token de Produto")
+        self.result = None
+        self.resizable(False, False)
+
+        try:
+            self.iconbitmap(ICON_FILE)
+        except tk.TclError:
+            logger.debug("Não foi possível carregar o ícone para o diálogo de token de produto.")
+
+        main_frame = ttk.Frame(self, padding=20)
+        main_frame.pack(fill=BOTH, expand=True)
+
+        header = ttk.Label(
+            main_frame,
+            text="Token de Produto Necessário",
+            font=("Segoe UI", 13, "bold"),
+            bootstyle="primary",
+        )
+        header.pack(pady=(0, 8))
+
+        info_text = (
+            "Informe o token de produto da sua conta Keygen. "
+            "Este token pode ser gerado no painel do Keygen em "
+            "Settings → Product Tokens."
+        )
+        info_label = ttk.Label(
+            main_frame,
+            text=info_text,
+            wraplength=360,
+            font=("Segoe UI", 10),
+            justify=tk.LEFT,
+        )
+        info_label.pack(pady=(0, 14))
+
+        entry_label = ttk.Label(
+            main_frame,
+            text="Token de Produto:",
+            font=("Segoe UI", 10, "bold"),
+        )
+        entry_label.pack(anchor=tk.W)
+
+        self.entry = ttk.Entry(main_frame, width=55, font=("Segoe UI", 10))
+        self.entry.pack(pady=(4, 18), ipady=4, fill=X)
+        self.entry.focus_set()
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=X)
+
+        cancel_button = ttk.Button(
+            button_frame,
+            text="Cancelar",
+            width=12,
+            command=self.on_cancel,
+            bootstyle="secondary",
+        )
+        cancel_button.pack(side=RIGHT, padx=(10, 0))
+
+        ok_button = ttk.Button(
+            button_frame,
+            text="Guardar",
+            width=12,
+            command=self.on_ok,
+            bootstyle="success",
+        )
+        ok_button.pack(side=RIGHT)
+
+        self.bind("<Return>", self.on_ok)
+        self.bind("<Escape>", self.on_cancel)
+        self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+
+        self.update_idletasks()
+        parent_x = parent.winfo_x()
+        parent_y = parent.winfo_y()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        dialog_w = self.winfo_width()
+        dialog_h = self.winfo_height()
+        x = parent_x + (parent_w - dialog_w) // 2
+        y = parent_y + (parent_h - dialog_h) // 2
+        self.geometry(f"+{x}+{y}")
+
+        self.grab_set()
+        self.wait_window(self)
+
+    def on_ok(self, event=None):
+        self.result = self.entry.get()
+        self.destroy()
+
+    def on_cancel(self, event=None):
+        self.result = None
+        self.destroy()
+
 def get_app_data_path():
     # ... (O conteúdo desta função não muda)
     app_data_folder_name = "EditorAutomatico"
@@ -221,6 +320,7 @@ def get_app_data_path():
 
 APP_DATA_PATH = get_app_data_path()
 LICENSE_FILE_PATH = os.path.join(APP_DATA_PATH, "license.json")
+USER_PRODUCT_TOKEN_PATH = os.path.join(APP_DATA_PATH, "product_token.dat")
 
 
 class LicenseTamperedError(RuntimeError):
@@ -277,6 +377,13 @@ def get_product_token() -> str:
         if file_token:
             return file_token
 
+    user_configured_token = _sanitize_product_token(
+        _load_secret_from_file(USER_PRODUCT_TOKEN_PATH),
+        f"ficheiro de configuração {USER_PRODUCT_TOKEN_PATH}",
+    )
+    if user_configured_token:
+        return user_configured_token
+
     resource_token = _sanitize_product_token(
         _load_secret_from_file(resource_path(PRODUCT_TOKEN_RESOURCE)),
         "recurso incorporado product_token.dat",
@@ -315,6 +422,57 @@ def _get_product_token_optional() -> Optional[str]:
             "Será utilizada a autenticação com a chave de licença."
         )
         return None
+
+
+def store_product_token(token: str) -> None:
+    sanitized = _sanitize_product_token(token, "token fornecido pelo utilizador")
+    if not sanitized:
+        raise ValueError("Token de produto inválido.")
+
+    try:
+        os.makedirs(APP_DATA_PATH, exist_ok=True)
+        with open(USER_PRODUCT_TOKEN_PATH, "w", encoding="utf-8") as token_file:
+            token_file.write(sanitized + "\n")
+    except OSError as exc:
+        raise RuntimeError("Não foi possível guardar o token de produto.") from exc
+
+    get_product_token.cache_clear()
+
+
+def prompt_for_product_token(parent_window) -> bool:
+    """Solicita ao utilizador o token de produto e guarda-o se fornecido."""
+
+    while True:
+        dialog = ProductTokenDialog(parent_window)
+        token_input = (dialog.result or "").strip()
+
+        if not token_input:
+            return False
+
+        try:
+            store_product_token(token_input)
+        except ValueError:
+            messagebox.showerror(
+                "Token inválido",
+                "O token de produto fornecido é inválido. Verifique e tente novamente.",
+                parent=parent_window,
+            )
+            continue
+        except RuntimeError as exc:
+            logger.exception("Falha ao guardar o token de produto.")
+            messagebox.showerror(
+                "Erro ao guardar token",
+                str(exc),
+                parent=parent_window,
+            )
+            return False
+
+        messagebox.showinfo(
+            "Token guardado",
+            "O token de produto foi configurado com sucesso.",
+            parent=parent_window,
+        )
+        return True
 
 
 def _derive_encryption_key(fingerprint: str) -> bytes:
@@ -566,14 +724,14 @@ def activate_new_license(license_key, fingerprint):
         r.raise_for_status()
         validation_data = r.json()
         if not validation_data.get("meta", {}).get("valid"):
-            return None, validation_data.get("meta", {}).get("detail", "Chave inválida ou expirada.")
+            return None, validation_data.get("meta", {}).get("detail", "Chave inválida ou expirada."), None
         license_id = validation_data["data"]["id"]
     except requests.exceptions.Timeout:
         logger.warning("Tempo limite ao validar a chave de licença.")
-        return None, "O pedido ao servidor de licenças excedeu o tempo limite."
+        return None, "O pedido ao servidor de licenças excedeu o tempo limite.", None
     except requests.exceptions.RequestException as exc:
         logger.exception("Erro ao validar a chave de licença: %s", exc)
-        return None, "Não foi possível contactar o servidor para validar a chave."
+        return None, "Não foi possível contactar o servidor para validar a chave.", None
 
     activation_payload = {
         "data": {
@@ -584,7 +742,7 @@ def activate_new_license(license_key, fingerprint):
     }
     auth_headers, auth_error = _build_auth_headers(license_key)
     if auth_error:
-        return None, auth_error
+        return None, auth_error, "auth_required"
     try:
         r = requests.post(
             f"{API_BASE_URL}/machines",
@@ -594,21 +752,38 @@ def activate_new_license(license_key, fingerprint):
         )
         r.raise_for_status()
         validation_data.setdefault("meta", {})["key"] = license_key
-        return validation_data, "Ativação bem-sucedida."
+        return validation_data, "Ativação bem-sucedida.", None
     except requests.exceptions.Timeout:
         logger.warning("Tempo limite ao ativar a licença para a máquina.")
-        return None, "O pedido ao servidor de licenças excedeu o tempo limite durante a ativação."
-    except requests.exceptions.RequestException as e:
-        if e.response is not None:
+        return None, "O pedido ao servidor de licenças excedeu o tempo limite durante a ativação.", None
+    except requests.exceptions.HTTPError as e:
+        response = e.response
+        body: Dict[str, Any] = {}
+        if response is not None:
             try:
-                body = e.response.json()
+                body = response.json()
             except ValueError:
                 body = {}
-            if e.response.status_code == 422 and body.get('errors', [{}])[0].get('code') == 'FINGERPRINT_ALREADY_TAKEN':
+            if response.status_code in (401, 403):
+                logger.warning(
+                    "Falha de autenticação ao ativar licença: status %s.",
+                    response.status_code,
+                )
+                return (
+                    None,
+                    "Não foi possível autenticar a requisição no servidor de licenças. "
+                    "Configure o token de produto da API e tente novamente.",
+                    "auth_required",
+                )
+            if response.status_code == 422 and body.get('errors', [{}])[0].get('code') == 'FINGERPRINT_ALREADY_TAKEN':
                 logger.info("A máquina já estava ativada para esta licença.")
-                return validation_data, "Máquina já estava ativada."
+                validation_data.setdefault("meta", {})["key"] = license_key
+                return validation_data, "Máquina já estava ativada.", None
         logger.exception("Erro ao ativar a máquina para a licença.")
-        return None, "Não foi possível ativar esta máquina. A licença pode estar em uso."
+        return None, "Não foi possível ativar esta máquina. A licença pode estar em uso.", None
+    except requests.exceptions.RequestException:
+        logger.exception("Erro inesperado ao ativar a máquina para a licença.")
+        return None, "Não foi possível ativar esta máquina. A licença pode estar em uso.", None
 
 def save_license_data(license_data, fingerprint: Optional[str] = None):
     # ... (O conteúdo desta função não muda)
@@ -705,14 +880,21 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
 
     # REMOVIDO: A criação e destruição da janela temporária foi removida.
 
-    while True:
-        # Usa a janela principal (escondida) como pai para o diálogo.
-        dialog = CustomLicenseDialog(parent_window)
-        license_key_input = (dialog.result or "").strip()
+    license_key_input = stored_license_key or ""
+    needs_license_input = not bool(license_key_input)
 
-        if not license_key_input:
-            messagebox.showwarning("Ativação Necessária", "É necessária uma chave de licença para usar este programa.", parent=parent_window)
-            return False, None
+    while True:
+        if needs_license_input:
+            dialog = CustomLicenseDialog(parent_window)
+            license_key_input = (dialog.result or "").strip()
+
+            if not license_key_input:
+                messagebox.showwarning(
+                    "Ativação Necessária",
+                    "É necessária uma chave de licença para usar este programa.",
+                    parent=parent_window,
+                )
+                return False, None
 
         activation_payload, spinner_error = _run_with_spinner(
             parent_window,
@@ -733,12 +915,13 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
 
             if not messagebox.askretrycancel("Falha na Ativação", error_message, parent=parent_window):
                 return False, None
+            needs_license_input = False
             continue
 
         if activation_payload:
-            activation_data, message = activation_payload
+            activation_data, message, error_code = activation_payload
         else:
-            activation_data, message = None, "Erro desconhecido durante a ativação."
+            activation_data, message, error_code = None, "Erro desconhecido durante a ativação.", None
 
         if activation_data:
             messagebox.showinfo("Sucesso", "A sua licença foi ativada com sucesso nesta máquina!", parent=parent_window)
@@ -746,5 +929,26 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
             save_license_data(activation_data, fingerprint)
             return True, activation_data
         else:
-            if not messagebox.askretrycancel("Falha na Ativação", f"{message}\nDeseja tentar novamente?", parent=parent_window):
+            if error_code == "auth_required":
+                if prompt_for_product_token(parent_window):
+                    needs_license_input = False
+                    continue
+                retry_message = (
+                    "O token de produto é necessário para concluir a ativação. "
+                    "Deseja tentar novamente?"
+                )
+                if not messagebox.askretrycancel("Falha na Ativação", retry_message, parent=parent_window):
+                    return False, None
+                needs_license_input = True
+                continue
+
+            if not message:
+                message = "Ocorreu um erro durante a ativação."
+
+            if not messagebox.askretrycancel(
+                "Falha na Ativação",
+                f"{message}\nDeseja tentar novamente?",
+                parent=parent_window,
+            ):
                 return False, None
+            needs_license_input = True
