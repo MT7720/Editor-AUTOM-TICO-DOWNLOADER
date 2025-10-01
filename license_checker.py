@@ -7,9 +7,11 @@ import hashlib
 import logging
 import platform
 import uuid
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Tuple
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from functools import lru_cache
-from typing import Any, Dict, Optional, Tuple
 
 import requests
 import tkinter as tk
@@ -31,13 +33,19 @@ logger = logging.getLogger(__name__)
 ACCOUNT_ID = "9798e344-f107-4cfd-bc83-af9b8e75d352"
 PRODUCT_TOKEN_ENV_VAR = "KEYGEN_PRODUCT_TOKEN"
 PRODUCT_TOKEN_FILE_ENV_VAR = "KEYGEN_PRODUCT_TOKEN_FILE"
-PRODUCT_TOKEN_RESOURCE = "security/product_token.dat"
-API_BASE_URL = f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
+TOKEN_BROKER_URL_ENV_VAR = "KEYGEN_TOKEN_BROKER_URL"
+TOKEN_BROKER_SHARED_SECRET_ENV_VAR = "KEYGEN_TOKEN_BROKER_SECRET"
+API_BASE_URL = os.getenv(
+    "LICENSE_API_BASE_URL", f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
+)
 ICON_FILE = resource_path("icone.ico")
 REQUEST_TIMEOUT = 10
 SPINNER_POLL_INTERVAL_MS = 100
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2)
+
+_DELEGATED_TOKEN_CACHE: Dict[str, Tuple[str, float]] = {}
+_DELEGATED_TOKEN_CLOCK_SKEW_SECONDS = 15
 
 _PRODUCT_TOKEN_PLACEHOLDER_VALUES = {
     "EDITOR_AUTOMATICO_PRODUCT_TOKEN_PLACEHOLDER",
@@ -384,27 +392,6 @@ def get_product_token() -> str:
     if user_configured_token:
         return user_configured_token
 
-    resource_token = _sanitize_product_token(
-        _load_secret_from_file(resource_path(PRODUCT_TOKEN_RESOURCE)),
-        "recurso incorporado product_token.dat",
-    )
-    if resource_token:
-        return resource_token
-
-    executable_dir = os.path.dirname(sys.executable)
-    executable_candidates = [
-        os.path.join(executable_dir, "security", "product_token.dat"),
-        os.path.join(executable_dir, "product_token.dat"),
-    ]
-
-    for candidate in executable_candidates:
-        file_token = _sanitize_product_token(
-            _load_secret_from_file(candidate),
-            f"ficheiro {candidate}",
-        )
-        if file_token:
-            return file_token
-
     raise RuntimeError(
         "A variável de ambiente 'KEYGEN_PRODUCT_TOKEN' (ou ficheiro apontado por "
         "'KEYGEN_PRODUCT_TOKEN_FILE') deve estar definida antes de utilizar a "
@@ -422,6 +409,107 @@ def _get_product_token_optional() -> Optional[str]:
             "Será utilizada a autenticação com a chave de licença."
         )
         return None
+
+
+def _clear_delegated_token_cache() -> None:
+    _DELEGATED_TOKEN_CACHE.clear()
+
+
+def _parse_iso_datetime(value: str) -> Optional[float]:
+    try:
+        sanitized = value.strip()
+        if sanitized.endswith("Z"):
+            sanitized = sanitized[:-1] + "+00:00"
+        dt = datetime.fromisoformat(sanitized)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _request_delegated_credential(
+    license_key: str,
+) -> Tuple[Optional[str], Optional[float], Optional[str]]:
+    broker_url = os.getenv(TOKEN_BROKER_URL_ENV_VAR)
+    if not broker_url:
+        return None, None, (
+            "O serviço de credenciais delegadas não está configurado. "
+            "Contacte o administrador do sistema."
+        )
+
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    shared_secret = os.getenv(TOKEN_BROKER_SHARED_SECRET_ENV_VAR)
+    if shared_secret:
+        headers["X-Broker-Secret"] = shared_secret
+
+    payload = {"licenseKey": license_key}
+
+    try:
+        response = requests.post(
+            broker_url,
+            json=payload,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+    except requests.exceptions.Timeout:
+        logger.warning("Tempo limite ao solicitar uma credencial delegada.")
+        return None, None, "O serviço de credenciais demorou demasiado tempo a responder."
+    except requests.exceptions.RequestException as exc:
+        logger.exception("Erro ao contactar o serviço de credenciais: %s", exc)
+        return None, None, "Não foi possível contactar o serviço de credenciais delegadas."
+
+    try:
+        data = response.json()
+    except ValueError:
+        logger.error("Resposta inválida recebida do serviço de credenciais delegadas.")
+        return None, None, "Resposta inválida do serviço de credenciais delegadas."
+
+    token = data.get("token") or data.get("accessToken") or data.get("credential")
+    if not token:
+        logger.error("O serviço de credenciais respondeu sem fornecer um token válido.")
+        return None, None, "O serviço de credenciais não devolveu uma credencial válida."
+
+    expiry_timestamp: Optional[float] = None
+    expires_at_raw = data.get("expiresAt") or data.get("expiry")
+    expires_in_raw = data.get("expiresIn")
+
+    if isinstance(expires_in_raw, (int, float)):
+        expiry_timestamp = time.time() + float(expires_in_raw)
+    elif isinstance(expires_in_raw, str):
+        try:
+            expiry_timestamp = time.time() + float(expires_in_raw)
+        except ValueError:
+            logger.debug("Valor inesperado para expiresIn recebido do broker: %s", expires_in_raw)
+
+    if isinstance(expires_at_raw, str):
+        parsed_timestamp = _parse_iso_datetime(expires_at_raw)
+        if parsed_timestamp:
+            expiry_timestamp = parsed_timestamp
+
+    return token, expiry_timestamp, None
+
+
+def _get_delegated_credential(license_key: str) -> Tuple[Optional[str], Optional[str]]:
+    if not license_key:
+        return None, "É necessária uma chave de licença para obter credenciais delegadas."
+
+    now = time.time()
+    cached = _DELEGATED_TOKEN_CACHE.get(license_key)
+    if cached:
+        token, expiry = cached
+        if expiry - _DELEGATED_TOKEN_CLOCK_SKEW_SECONDS > now:
+            return token, None
+        _DELEGATED_TOKEN_CACHE.pop(license_key, None)
+
+    token, expiry_timestamp, error = _request_delegated_credential(license_key)
+    if token:
+        expiry_timestamp = expiry_timestamp or (now + 120)
+        _DELEGATED_TOKEN_CACHE[license_key] = (token, expiry_timestamp)
+        return token, None
+
+    return None, error
 
 
 def store_product_token(token: str) -> None:
@@ -679,9 +767,16 @@ def _build_auth_headers(license_key: Optional[str] = None) -> Tuple[Dict[str, st
         headers["Authorization"] = f"Bearer {token}"
         return headers, None
     if license_key:
-        headers["Authorization"] = f"License {license_key}"
-        headers["Keygen-License"] = license_key
-        return headers, None
+        delegated_token, error = _get_delegated_credential(license_key)
+        if delegated_token:
+            headers["Authorization"] = f"Bearer {delegated_token}"
+            headers["Keygen-License"] = license_key
+            return headers, None
+        return (
+            headers,
+            error
+            or "Não foi possível obter uma credencial delegada para autenticar o pedido.",
+        )
     return headers, "Não foi possível autenticar a requisição ao servidor de licenças."
 
 
