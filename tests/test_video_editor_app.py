@@ -5,11 +5,18 @@ from main import VideoEditorApp, SUBTITLE_POSITIONS
 
 @pytest.fixture(scope="module")
 def app():
-    display = Display(visible=0, size=(800, 600))
-    display.start()
+    try:
+        display = Display(visible=0, size=(800, 600))
+        display.start()
+    except FileNotFoundError:
+        pytest.skip("Xvfb não está disponível no ambiente de testes.")
+
     application = VideoEditorApp()
-    yield application
-    application.root.destroy()
+    try:
+        yield application
+    finally:
+        application.root.destroy()
+        display.stop()
 
 
 def test_gather_processing_params(app):
