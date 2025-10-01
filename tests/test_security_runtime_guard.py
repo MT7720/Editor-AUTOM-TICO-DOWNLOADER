@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import types
 from pathlib import Path
 
@@ -120,3 +122,48 @@ def test_collect_resource_violations_accepts_crlf_when_normalizing(monkeypatch, 
 
     assert runtime_guard._collect_resource_violations(manifest_lf) == []
     assert runtime_guard._collect_resource_violations(manifest_crlf) == []
+
+
+def test_collect_resource_violations_skipped_when_not_frozen(monkeypatch):
+    fake_sys = types.SimpleNamespace(frozen=False)
+    monkeypatch.setattr(runtime_guard, "sys", fake_sys)
+
+    manifest = {
+        "resources": {
+            "example": {
+                "path": "missing",
+                "hash": "abc",
+                "signature": "def",
+            }
+        }
+    }
+
+    assert runtime_guard._collect_resource_violations(manifest) == []
+
+
+def test_collect_resource_violations_enforced_when_frozen(monkeypatch, tmp_path):
+    fake_sys = types.SimpleNamespace(frozen=True)
+    monkeypatch.setattr(runtime_guard, "sys", fake_sys)
+
+    resource_path = tmp_path / "resource.txt"
+    resource_path.write_text("conteudo")
+
+    wrong_hash = "0" * 64
+    signature = hmac.new(runtime_guard._HMAC_KEY, wrong_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    manifest = {
+        "algorithm": "sha256",
+        "resources": {
+            "resource.txt": {
+                "path": str(resource_path),
+                "hash": wrong_hash,
+                "signature": signature,
+            }
+        },
+    }
+
+    monkeypatch.setattr(runtime_guard, "_resolve_resource_path", lambda resource: Path(resource["path"]))
+
+    violations = runtime_guard._collect_resource_violations(manifest)
+    assert violations
+    assert "Hash divergente" in violations[0]
