@@ -19,18 +19,23 @@ assinaturas do manifesto estão documentados em [`docs/runtime_guard_key_rotatio
 
 ## Monitoramento da licença
 
-Depois de validada, a aplicação continua a verificar periodicamente o status da licença junto ao Keygen utilizando o identificador salvo no ficheiro `license.json`. Em caso de falha de rede temporária, o processo regista o erro nos logs e aguarda um intervalo crescente (exponencial) antes de repetir a verificação, evitando encerramentos acidentais. Caso o servidor informe que a licença expirou ou se tornou inválida, o utilizador é avisado e o programa termina imediatamente para impedir o uso não autorizado.
+A activação do Editor Automático é agora completamente offline. Cada licença é emitida como um token compacto assinado com Ed25519 pela autoridade interna (`security/license_authority.py`). O cliente embute a chave pública correspondente e valida localmente o token, garantindo que:
 
-O token de produto utilizado para contactar a API da Keygen **não** acompanha mais o binário. Durante o build (ou execução em desenvolvimento), defina a variável de ambiente `KEYGEN_PRODUCT_TOKEN` ou forneça um caminho através de `KEYGEN_PRODUCT_TOKEN_FILE` apontando para um ficheiro seguro contendo o token. Para ambientes de produção recomenda-se configurar o `security.token_broker_service`, que valida a chave de licença do utilizador e devolve um _token_ delegado de curta duração. Ao activar a aplicação, o `license_checker.py` utiliza a chave introduzida pelo utilizador para solicitar este token ao _broker_ definido em `KEYGEN_TOKEN_BROKER_URL`, guardando-o em cache apenas até perto da expiração. O endpoint deve exigir um segredo partilhado (`TOKEN_BROKER_SHARED_SECRET`) e nunca expor o `KEYGEN_PRODUCT_TOKEN` aos clientes finais.
+- o `fingerprint` da máquina está incluído no payload e coincide com o equipamento actual;
+- a data de expiração (`exp`) ainda não foi atingida; e
+- o número de série (`serial`) não aparece na lista de revogações distribuída.
 
-Ao colocar o serviço de corretagem em produção:
+O ficheiro `license.json` continua cifrado com AES-GCM usando uma chave derivada do fingerprint da máquina. Qualquer alteração manual invalida o ficheiro e força nova activação.
 
-1. Instale e execute `python -m security.token_broker_service` num ambiente controlado (por exemplo, atrás de um _reverse proxy_). Configure as variáveis `KEYGEN_PRODUCT_TOKEN`, `TOKEN_BROKER_SHARED_SECRET`, `TOKEN_BROKER_SCOPE` (opcional) e `TOKEN_BROKER_TOKEN_TTL` conforme as políticas internas.
-2. Exponha apenas o endpoint `/v1/delegated-credentials` e utilize TLS para proteger o transporte.
-3. Nas máquinas cliente, defina `KEYGEN_TOKEN_BROKER_URL` para o URL HTTPS do broker e forneça o segredo partilhado através de `KEYGEN_TOKEN_BROKER_SECRET` (por exemplo, injectado por um _installer_ ou sistema de gestão de dispositivos). Opcionalmente, redireccione `LICENSE_API_BASE_URL` para um _gateway_ interno caso deseje encapsular também o acesso à API do Keygen.
-4. Garanta que o segredo nunca é gravado em disco em claro; utilize cofres de segredos do sistema operativo ou variáveis efémeras injectadas durante a activação.
+### Revogação e reemissão
 
-O ficheiro `license.json` armazenado no diretório de dados da aplicação é agora cifrado com AES-GCM usando uma chave derivada do _fingerprint_ da máquina. Esse identificador é obtido preferencialmente através de APIs nativas do Windows (MachineGuid, SMBIOS ou número de série do volume) e apenas recorre a dados multiplataforma (`uuid.getnode` e `platform.uname`) como último recurso, eliminando dependências de comandos externos. Cada payload inclui um _hash_ autenticado; qualquer tentativa de adulteração resulta na eliminação do ficheiro e na necessidade de reativação manual da licença.
+Para remover acessos comprometidos, distribua periodicamente um ficheiro JSON com a chave `revoked` contendo a lista de seriais revogados (por defeito em `security/license_revocations.json`). Também é possível apontar `LICENSE_REVOCATION_URL` para um endpoint HTTPS que devolve o mesmo formato. O `license_checker.py` actualiza e utiliza esta lista durante as verificações periódicas, encerrando a aplicação caso detecte um token revogado.
+
+Quando for necessário reemitir uma licença, gere um novo token com `security.license_authority` e entregue-o ao cliente. Tokens antigos permanecerão inválidos assim que o número de série antigo constar da lista de revogação.
+
+### Fluxo de emissão offline
+
+O módulo `security/license_authority.py` inclui funções reutilizáveis e uma pequena ferramenta de automação para emissão em lote. Consulte [`docs/offline_license_issuance.md`](docs/offline_license_issuance.md) para instruções completas sobre a geração dos tokens, bem como orientações de migração para quem ainda utiliza chaves Keygen legadas.
 
 ## Organização das abas do editor
 

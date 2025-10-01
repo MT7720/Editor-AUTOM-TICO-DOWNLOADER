@@ -9,7 +9,7 @@ import platform
 import uuid
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from functools import lru_cache
 
@@ -17,6 +17,8 @@ import requests
 import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as ttk
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from ttkbootstrap.constants import *
 
@@ -55,6 +57,18 @@ _PRODUCT_TOKEN_PLACEHOLDER_VALUES = {
     "CHANGEME",
 }
 _PRODUCT_TOKEN_PLACEHOLDER_SUBSTRINGS = ("PLACEHOLDER",)
+
+LICENSE_AUTHORITY_PUBLIC_KEY_B64 = "9haWUaPN5nebwlUvq1mLoYcG1sqpPNoIwHrOzmN3E2I="
+LICENSE_REVOCATION_URL_ENV_VAR = "LICENSE_REVOCATION_URL"
+LICENSE_REVOCATION_FILE_ENV_VAR = "LICENSE_REVOCATION_FILE"
+LICENSE_REVOCATION_REFRESH_SECONDS = int(os.getenv("LICENSE_REVOCATION_REFRESH", "3600"))
+LICENSE_REVOCATION_TIMEOUT = 5
+MIGRATION_REQUIRED_MESSAGE = (
+    "O formato antigo de chaves do Keygen não é suportado. Solicite um novo token "
+    "offline emitido pela equipa de suporte."
+)
+
+_REVOCATION_CACHE: Dict[str, Any] = {"timestamp": 0.0, "serials": set(), "error": None}
 
 
 class SpinnerDialog(ttk.Toplevel):
@@ -335,6 +349,14 @@ class LicenseTamperedError(RuntimeError):
     """Raised when the persisted license payload fails integrity checks."""
 
 
+class LicenseValidationError(RuntimeError):
+    """Raised when an offline license token fails verification."""
+
+
+class LicenseRevokedError(LicenseValidationError):
+    """Raised when the token serial is listed in the revocation cache."""
+
+
 def _load_secret_from_file(path: str) -> Optional[str]:
     try:
         with open(path, "r", encoding="utf-8") as secret_file:
@@ -415,6 +437,109 @@ def _clear_delegated_token_cache() -> None:
     _DELEGATED_TOKEN_CACHE.clear()
 
 
+def _clear_revocation_cache() -> None:
+    _REVOCATION_CACHE["timestamp"] = 0.0
+    _REVOCATION_CACHE["serials"] = set()
+    _REVOCATION_CACHE["error"] = None
+
+
+@lru_cache()
+def _embedded_public_key() -> ed25519.Ed25519PublicKey:
+    public_bytes = base64.b64decode(LICENSE_AUTHORITY_PUBLIC_KEY_B64)
+    return ed25519.Ed25519PublicKey.from_public_bytes(public_bytes)
+
+
+def _decode_token_segments(token: str) -> Tuple[bytes, bytes]:
+    try:
+        payload_segment, signature_segment = token.split(".")
+    except ValueError as exc:
+        raise LicenseValidationError("Token de licença inválido.") from exc
+    return _urlsafe_b64decode(payload_segment), _urlsafe_b64decode(signature_segment)
+
+
+def _urlsafe_b64decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def _verify_offline_token(token: str) -> Dict[str, Any]:
+    payload, signature = _decode_token_segments(token)
+    public_key = _embedded_public_key()
+    try:
+        public_key.verify(signature, payload)
+    except InvalidSignature as exc:
+        raise LicenseValidationError("Assinatura da licença inválida.") from exc
+    try:
+        claims: Dict[str, Any] = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LicenseValidationError("Conteúdo inválido no token de licença.") from exc
+    return claims
+
+
+def _load_revocation_serials() -> Tuple[Set[str], Optional[str]]:
+    now = time.time()
+    if _REVOCATION_CACHE["serials"] and (now - _REVOCATION_CACHE["timestamp"]) < LICENSE_REVOCATION_REFRESH_SECONDS:
+        return _REVOCATION_CACHE["serials"], _REVOCATION_CACHE.get("error")
+
+    source_url = os.getenv(LICENSE_REVOCATION_URL_ENV_VAR)
+    previous_serials: Set[str] = set(_REVOCATION_CACHE.get("serials", set()))
+    revocations: Set[str] = previous_serials
+    error_message: Optional[str] = None
+    try:
+        if source_url:
+            response = requests.get(source_url, timeout=LICENSE_REVOCATION_TIMEOUT)
+            response.raise_for_status()
+            payload = response.json()
+        else:
+            file_path = os.getenv(LICENSE_REVOCATION_FILE_ENV_VAR)
+            if not file_path:
+                file_path = resource_path(os.path.join("security", "license_revocations.json"))
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+            else:
+                payload = {"revoked": []}
+        revoked_serials = payload.get("revoked", [])
+        if isinstance(revoked_serials, list):
+            revocations = {str(serial) for serial in revoked_serials}
+    except Exception as exc:
+        logger.debug("Falha ao atualizar lista de revogação: %s", exc)
+        error_message = str(exc)
+
+    _REVOCATION_CACHE["timestamp"] = now
+    _REVOCATION_CACHE["serials"] = revocations
+    _REVOCATION_CACHE["error"] = error_message
+    return revocations, error_message
+
+
+def _ensure_not_revoked(serial: Optional[str]) -> None:
+    if not serial:
+        return
+    serials, _error = _load_revocation_serials()
+    if serial in serials:
+        raise LicenseRevokedError("Esta licença foi revogada pela autoridade.")
+
+
+def _validate_claims(token: str, claims: Dict[str, Any], fingerprint: str) -> Dict[str, Any]:
+    claim_fingerprint = claims.get("fingerprint")
+    if not claim_fingerprint:
+        raise LicenseValidationError("O token de licença não possui uma impressão digital associada.")
+    if claim_fingerprint != fingerprint:
+        raise LicenseValidationError("O token de licença não corresponde a esta máquina.")
+
+    expiry_text = claims.get("exp")
+    if not expiry_text:
+        raise LicenseValidationError("O token de licença não possui data de expiração.")
+    expiry_timestamp = _parse_iso_datetime(expiry_text)
+    if expiry_timestamp is None:
+        raise LicenseValidationError("Data de expiração inválida no token de licença.")
+    if expiry_timestamp < time.time():
+        raise LicenseValidationError("A licença expirou.")
+
+    _ensure_not_revoked(str(claims.get("serial")))
+
+    claims["token"] = token
+    return claims
 def _parse_iso_datetime(value: str) -> Optional[float]:
     try:
         sanitized = value.strip()
@@ -760,125 +885,74 @@ def get_machine_fingerprint():
 
     return hashlib.sha256(identifier.encode("utf-8")).hexdigest()
 
-def _build_auth_headers(license_key: Optional[str] = None) -> Tuple[Dict[str, str], Optional[str]]:
-    headers = {"Accept": "application/vnd.api+json"}
-    token = _get_product_token_optional()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-        return headers, None
-    if license_key:
-        delegated_token, error = _get_delegated_credential(license_key)
-        if delegated_token:
-            headers["Authorization"] = f"Bearer {delegated_token}"
-            headers["Keygen-License"] = license_key
-            return headers, None
-        return (
-            headers,
-            error
-            or "Não foi possível obter uma credencial delegada para autenticar o pedido.",
-        )
-    return headers, "Não foi possível autenticar a requisição ao servidor de licenças."
-
-
 def validate_license_with_id(license_id, fingerprint, license_key: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    # ... (O conteúdo desta função não muda)
-    headers, auth_error = _build_auth_headers(license_key)
-    if auth_error:
-        logger.warning("Não foi possível obter credenciais para validar a licença %s.", license_id)
-        return None, auth_error
+    token = license_key or license_id
+    if not token:
+        return None, "Não foi possível localizar o token de licença armazenado."
+
+    if "." not in token:
+        logger.info("Licença armazenada utiliza o formato antigo e requer migração.")
+        return {"meta": {"valid": False, "detail": MIGRATION_REQUIRED_MESSAGE}}, None
+
     try:
-        response = requests.post(
-            f"{API_BASE_URL}/licenses/{license_id}/actions/validate",
-            params={"fingerprint": fingerprint},
-            headers=headers,
-            timeout=REQUEST_TIMEOUT,
+        claims = _verify_offline_token(token)
+        validated_claims = _validate_claims(token, claims, fingerprint)
+    except LicenseRevokedError as exc:
+        logger.warning(
+            "Licença revogada detectada durante validação periódica: serial=%s",
+            claims.get("serial") if "claims" in locals() else "?",
         )
-        response.raise_for_status()
-        return response.json(), None
-    except requests.exceptions.Timeout:
-        logger.warning("Tempo limite ao validar a licença %s.", license_id)
-        return None, "O pedido ao servidor de licenças excedeu o tempo limite."
-    except requests.exceptions.RequestException as exc:
-        logger.exception("Erro ao validar a licença %s: %s", license_id, exc)
-        return None, "Não foi possível contactar o servidor de licenças."
-    except ValueError as exc:  # pragma: no cover - defensive
-        logger.exception("Resposta inválida recebida ao validar a licença %s.", license_id)
-        return None, "Resposta inválida do servidor de licenças."
+        return {"meta": {"valid": False, "detail": str(exc)}}, None
+    except LicenseValidationError as exc:
+        logger.warning("Falha na validação local da licença: %s", exc)
+        return {"meta": {"valid": False, "detail": str(exc)}}, None
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Erro inesperado ao validar token de licença armazenado.")
+        return None, str(exc)
+
+    response_payload = {
+        "data": {"id": validated_claims.get("customer_id"), "attributes": validated_claims},
+        "meta": {"valid": True, "claims": validated_claims, "key": token},
+    }
+    return response_payload, None
+
 
 def activate_new_license(license_key, fingerprint):
-    # ... (O conteúdo desta função não muda)
-    headers = {"Content-Type": "application/vnd.api+json", "Accept": "application/vnd.api+json"}
-    payload = {"meta": {"key": license_key}}
+    if not license_key or "." not in license_key:
+        return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+
     try:
-        r = requests.post(
-            f"{API_BASE_URL}/licenses/actions/validate-key",
-            json=payload,
-            headers=headers,
-            timeout=REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        validation_data = r.json()
-        if not validation_data.get("meta", {}).get("valid"):
-            return None, validation_data.get("meta", {}).get("detail", "Chave inválida ou expirada."), None
-        license_id = validation_data["data"]["id"]
-    except requests.exceptions.Timeout:
-        logger.warning("Tempo limite ao validar a chave de licença.")
-        return None, "O pedido ao servidor de licenças excedeu o tempo limite.", None
-    except requests.exceptions.RequestException as exc:
-        logger.exception("Erro ao validar a chave de licença: %s", exc)
-        return None, "Não foi possível contactar o servidor para validar a chave.", None
+        claims = _verify_offline_token(license_key)
+        validated_claims = _validate_claims(license_key, claims, fingerprint)
+    except LicenseRevokedError as exc:
+        logger.warning("Tentativa de ativação com licença revogada: %s", exc)
+        return None, str(exc), None
+    except LicenseValidationError as exc:
+        logger.warning("Falha ao ativar licença localmente: %s", exc)
+        return None, str(exc), None
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Erro inesperado ao ativar licença offline.")
+        return None, str(exc), None
 
     activation_payload = {
         "data": {
-            "type": "machines",
-            "attributes": {"fingerprint": fingerprint},
-            "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}},
-        }
+            "id": validated_claims.get("customer_id"),
+            "type": "licenses",
+            "attributes": {
+                "exp": validated_claims.get("exp"),
+                "seats": validated_claims.get("seats"),
+                "serial": validated_claims.get("serial"),
+                "fingerprint": validated_claims.get("fingerprint"),
+            },
+        },
+        "meta": {
+            "valid": True,
+            "key": license_key,
+            "claims": validated_claims,
+        },
     }
-    auth_headers, auth_error = _build_auth_headers(license_key)
-    if auth_error:
-        return None, auth_error, "auth_required"
-    try:
-        r = requests.post(
-            f"{API_BASE_URL}/machines",
-            json=activation_payload,
-            headers={**auth_headers, **headers},
-            timeout=REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        validation_data.setdefault("meta", {})["key"] = license_key
-        return validation_data, "Ativação bem-sucedida.", None
-    except requests.exceptions.Timeout:
-        logger.warning("Tempo limite ao ativar a licença para a máquina.")
-        return None, "O pedido ao servidor de licenças excedeu o tempo limite durante a ativação.", None
-    except requests.exceptions.HTTPError as e:
-        response = e.response
-        body: Dict[str, Any] = {}
-        if response is not None:
-            try:
-                body = response.json()
-            except ValueError:
-                body = {}
-            if response.status_code in (401, 403):
-                logger.warning(
-                    "Falha de autenticação ao ativar licença: status %s.",
-                    response.status_code,
-                )
-                return (
-                    None,
-                    "Não foi possível autenticar a requisição no servidor de licenças. "
-                    "Configure o token de produto da API e tente novamente.",
-                    "auth_required",
-                )
-            if response.status_code == 422 and body.get('errors', [{}])[0].get('code') == 'FINGERPRINT_ALREADY_TAKEN':
-                logger.info("A máquina já estava ativada para esta licença.")
-                validation_data.setdefault("meta", {})["key"] = license_key
-                return validation_data, "Máquina já estava ativada.", None
-        logger.exception("Erro ao ativar a máquina para a licença.")
-        return None, "Não foi possível ativar esta máquina. A licença pode estar em uso.", None
-    except requests.exceptions.RequestException:
-        logger.exception("Erro inesperado ao ativar a máquina para a licença.")
-        return None, "Não foi possível ativar esta máquina. A licença pode estar em uso.", None
+    return activation_payload, "Ativação bem-sucedida.", None
+
 
 def save_license_data(license_data, fingerprint: Optional[str] = None):
     # ... (O conteúdo desta função não muda)
@@ -1024,6 +1098,14 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
             save_license_data(activation_data, fingerprint)
             return True, activation_data
         else:
+            if error_code == "migration_required":
+                messagebox.showwarning(
+                    "Token incompatível",
+                    MIGRATION_REQUIRED_MESSAGE,
+                    parent=parent_window,
+                )
+                return False, None
+
             if error_code == "auth_required":
                 if prompt_for_product_token(parent_window):
                     needs_license_input = False
