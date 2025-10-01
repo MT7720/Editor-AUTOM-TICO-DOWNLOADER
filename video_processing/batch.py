@@ -468,14 +468,14 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
         return False
 
     root_folder = params.get('batch_root_folder')
-    image_folder = params.get('batch_image_parent_folder')
+    media_folder = params.get('batch_image_parent_folder')
     music_folder = params.get('music_folder_path')
 
     if not root_folder or not os.path.isdir(root_folder):
         progress_queue.put(("status", "Erro: Pasta Raiz do lote inválida.", "error"))
         return False
-    if not image_folder or not os.path.isdir(image_folder):
-        progress_queue.put(("status", "Erro: Pasta de imagens do lote inválida.", "error"))
+    if not media_folder or not os.path.isdir(media_folder):
+        progress_queue.put(("status", "Erro: Pasta de mídia do lote inválida.", "error"))
         return False
 
     progress_queue.put(("status", f"Buscando arquivos de áudio em subpastas de '{Path(root_folder).name}'...", "info"))
@@ -496,11 +496,24 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
         return False
     progress_queue.put(("status", f"Encontrados {len(audio_files_to_process)} arquivos de áudio para processar.", "info"))
 
+    media_path = Path(media_folder)
     supported_img_ext = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
-    all_images = [p for p in Path(image_folder).iterdir() if p.is_file() and p.suffix.lower() in supported_img_ext]
-    if not all_images:
-        progress_queue.put(("status", f"Erro: Nenhuma imagem encontrada em {image_folder}", "error"))
+    supported_vid_ext = ('.mp4', '.mov', '.mkv', '.avi', '.m4v')
+
+    available_videos = [p for p in media_path.iterdir() if p.is_file() and p.suffix.lower() in supported_vid_ext]
+    available_images = [p for p in media_path.iterdir() if p.is_file() and p.suffix.lower() in supported_img_ext]
+
+    use_video_assets = bool(available_videos)
+
+    if not available_videos and not available_images:
+        progress_queue.put(("status", f"Erro: Nenhum vídeo ou imagem encontrado em {media_folder}", "error"))
         return False
+
+    if use_video_assets:
+        random.shuffle(available_videos)
+        progress_queue.put(("status", f"{len(available_videos)} vídeos disponíveis na pasta selecionada.", "info"))
+    else:
+        progress_queue.put(("status", f"{len(available_images)} imagens disponíveis na pasta selecionada.", "info"))
 
     available_music_files: List[str] = []
     if music_folder and os.path.isdir(music_folder):
@@ -513,6 +526,7 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
             progress_queue.put(("status", f"Aviso: Não foi possível ler a pasta de músicas: {e}", "warning"))
 
     total_files = len(audio_files_to_process)
+    video_index = 0
     for i, audio_filepath in enumerate(audio_files_to_process):
         if cancel_event.is_set():
             return False
@@ -536,11 +550,16 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
         if params.get('add_fade_out'):
             final_duration += params.get('fade_out_duration', 10)
 
-        images_for_this_video = all_images.copy()
-        random.shuffle(images_for_this_video)
-
         item_temp_dir = tempfile.mkdtemp(prefix=f"kyle-h-batch-item-{i}-", dir=temp_dir)
-        base_video_path, success = _process_images_in_chunks(params, images_for_this_video, final_duration, item_temp_dir, progress_queue, cancel_event, log_prefix)
+        if use_video_assets:
+            base_video_path = str(available_videos[video_index % len(available_videos)])
+            video_index += 1
+            success = True
+            progress_queue.put(("status", f"[{log_prefix}] Vídeo base selecionado: {Path(base_video_path).name}", "info"))
+        else:
+            images_for_this_video = available_images.copy()
+            random.shuffle(images_for_this_video)
+            base_video_path, success = _process_images_in_chunks(params, images_for_this_video, final_duration, item_temp_dir, progress_queue, cancel_event, log_prefix)
 
         if not success:
             if not cancel_event.is_set():
