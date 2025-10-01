@@ -167,6 +167,16 @@ def _collect_executable_violations(manifest: Dict[str, object]) -> List[str]:
     if not executables:
         return []
 
+    # Quando o aplicativo está sendo executado diretamente do código-fonte (por exemplo,
+    # ``python main.py``), ``sys.executable`` aponta para o interpretador Python
+    # instalado na máquina do usuário. O manifesto, porém, contém apenas os hashes
+    # calculados para os executáveis empacotados (PyInstaller). Comparar o hash do
+    # interpretador local com esses valores faria a verificação falhar
+    # indevidamente, impedindo o uso em modo desenvolvimento. Nesse cenário,
+    # simplesmente pulamos a validação do executável.
+    if not getattr(sys, "frozen", False):
+        return []
+
     entry = _select_executable_entry(executables)
     if not entry:
         return ["Nenhuma referência de hash disponível para o executável atual"]
