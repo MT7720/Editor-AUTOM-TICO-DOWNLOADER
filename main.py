@@ -14,8 +14,8 @@ import platform
 from datetime import datetime
 import ttkbootstrap as ttk # Importa ttkbootstrap aqui
 import license_checker
-import video_editor_gui
-from video_editor_gui import (
+import gui
+from gui import (
     VideoEditorApp,
     SUBTITLE_POSITIONS,
     CONFIG_FILE as _CONFIG_FILE,
@@ -68,13 +68,13 @@ class ConfigManager:
     @staticmethod
     def load_config() -> dict:
         global CONFIG_FILE
-        video_editor_gui.CONFIG_FILE = CONFIG_FILE
+        gui.CONFIG_FILE = CONFIG_FILE
         return _ConfigManager.load_config()
 
     @staticmethod
     def save_config(config: dict) -> None:
         global CONFIG_FILE
-        video_editor_gui.CONFIG_FILE = CONFIG_FILE
+        gui.CONFIG_FILE = CONFIG_FILE
         _ConfigManager.save_config(config)
 
 def print_usage() -> None:
