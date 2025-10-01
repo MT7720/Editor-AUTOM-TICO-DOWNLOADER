@@ -36,7 +36,10 @@ def license_app(monkeypatch):
     app._license_check_job = None
     app._license_check_failures = 0
     app._license_termination_initiated = False
-    app.license_data = {"meta": {"key": "stored-key"}}
+    app.license_data = {
+        "data": {"id": "test-id", "attributes": {"expiry": None}},
+        "meta": {"key": "stored-key"},
+    }
 
     yield app, root.after_calls
 
@@ -44,7 +47,7 @@ def license_app(monkeypatch):
 def test_periodic_license_validation_success(monkeypatch, license_app):
     app, after_calls = license_app
 
-    def fake_validate(license_id, fingerprint, license_key):
+    def fake_validate(license_id, fingerprint, license_key, **kwargs):
         assert license_id == "test-id"
         assert fingerprint == "fingerprint"
         assert license_key == "stored-key"
@@ -63,11 +66,10 @@ def test_license_validation_network_backoff(monkeypatch, license_app):
     app, after_calls = license_app
     after_calls.clear()
 
-    monkeypatch.setattr(
-        license_checker,
-        "validate_license_with_id",
-        lambda *args, **kwargs: (None, "network-error"),
-    )
+    def failing_validate(*args, **kwargs):
+        return None, "network-error"
+
+    monkeypatch.setattr(license_checker, "validate_license_with_id", failing_validate)
 
     app._run_license_check()
 
@@ -84,11 +86,10 @@ def test_license_validation_invalid_triggers_exit(monkeypatch, license_app):
     app, after_calls = license_app
     after_calls.clear()
 
-    monkeypatch.setattr(
-        license_checker,
-        "validate_license_with_id",
-        lambda *args, **kwargs: ({"meta": {"valid": False, "detail": "Expirada"}}, None),
-    )
+    def invalid_validate(*args, **kwargs):
+        return {"meta": {"valid": False, "detail": "Expirada"}}, None
+
+    monkeypatch.setattr(license_checker, "validate_license_with_id", invalid_validate)
 
     warnings = {}
 
@@ -119,7 +120,7 @@ def test_license_validation_authentication_failure(monkeypatch, license_app):
     after_calls.clear()
     app.license_data = None
 
-    def fake_validate(license_id, fingerprint, license_key):
+    def fake_validate(license_id, fingerprint, license_key, **kwargs):
         assert license_key is None
         return None, "auth-error"
 

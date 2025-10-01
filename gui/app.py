@@ -187,7 +187,7 @@ class VideoEditorApp:
         error = None
         try:
             payload, error = license_checker.validate_license_with_id(
-                self._license_id, fingerprint, license_key
+                self._license_id, fingerprint, license_key, force_refresh=True
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Erro inesperado ao contactar o servidor de licenças.", exc_info=exc)
