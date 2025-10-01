@@ -7,8 +7,9 @@ import hashlib
 import logging
 import platform
 import subprocess
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from functools import lru_cache
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import requests
 import tkinter as tk
@@ -32,6 +33,104 @@ PRODUCT_TOKEN_ENV_VAR = "KEYGEN_PRODUCT_TOKEN"
 PRODUCT_TOKEN_FILE_ENV_VAR = "KEYGEN_PRODUCT_TOKEN_FILE"
 API_BASE_URL = f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
 ICON_FILE = resource_path("icone.ico")
+REQUEST_TIMEOUT = 10
+SPINNER_POLL_INTERVAL_MS = 100
+
+_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+
+
+class SpinnerDialog(ttk.Toplevel):
+    def __init__(self, parent, message: str):
+        super().__init__(parent)
+        self.transient(parent)
+        self.title("Aguarde")
+        self.resizable(False, False)
+        self._closed = False
+
+        try:
+            self.iconbitmap(ICON_FILE)
+        except tk.TclError:
+            logger.debug("Não foi possível carregar o ícone do spinner em %s.", ICON_FILE)
+
+        frame = ttk.Frame(self, padding=20)
+        frame.pack(fill=BOTH, expand=True)
+
+        label = ttk.Label(frame, text=message, font=("Segoe UI", 10), wraplength=260)
+        label.pack(pady=(0, 12))
+
+        self.progress = ttk.Progressbar(frame, mode="indeterminate", length=220)
+        self.progress.pack(fill=X)
+        self.progress.start(12)
+
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        self.update_idletasks()
+
+        parent_x = parent.winfo_x()
+        parent_y = parent.winfo_y()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        dialog_w = self.winfo_width()
+        dialog_h = self.winfo_height()
+        x = parent_x + (parent_w - dialog_w) // 2
+        y = parent_y + (parent_h - dialog_h) // 2
+        self.geometry(f"+{x}+{y}")
+
+        self.grab_set()
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self.progress.stop()
+        except Exception:
+            pass
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+
+def _run_with_spinner(parent_window, message: str, func, *args, timeout: Optional[float] = None, **kwargs):
+    dialog = SpinnerDialog(parent_window, message)
+    future = _EXECUTOR.submit(func, *args, **kwargs)
+    timed_out = {"value": False}
+
+    def poll_future():
+        if dialog._closed:
+            return
+        if future.done():
+            dialog.close()
+        else:
+            parent_window.after(SPINNER_POLL_INTERVAL_MS, poll_future)
+
+    parent_window.after(SPINNER_POLL_INTERVAL_MS, poll_future)
+
+    if timeout is not None:
+        def on_timeout():
+            if dialog._closed or future.done():
+                return
+            timed_out["value"] = True
+            future.cancel()
+            logger.warning("Tempo limite atingido para a operação de licença.")
+            dialog.close()
+
+        parent_window.after(int(timeout * 1000), on_timeout)
+
+    dialog.wait_window()
+
+    if timed_out["value"]:
+        return None, TimeoutError("Tempo limite excedido.")
+
+    try:
+        return future.result(), None
+    except CancelledError:
+        return None, TimeoutError("Operação cancelada.")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Erro inesperado ao executar operação de licença.")
+        return None, exc
 
 class CustomLicenseDialog(ttk.Toplevel):
     # ... (O conteúdo desta classe não muda)
@@ -214,38 +313,82 @@ def get_machine_fingerprint():
         identifier = f"{platform.system()}-{platform.node()}-{platform.machine()}"
     return hashlib.sha256(identifier.encode()).hexdigest()
 
-def validate_license_with_id(license_id, fingerprint):
+def validate_license_with_id(license_id, fingerprint) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     # ... (O conteúdo desta função não muda)
     token = get_product_token()
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.api+json"}
     try:
-        response = requests.post(f"{API_BASE_URL}/licenses/{license_id}/actions/validate", params={"fingerprint": fingerprint}, headers=headers)
-        return response.json()
-    except Exception: return None
+        response = requests.post(
+            f"{API_BASE_URL}/licenses/{license_id}/actions/validate",
+            params={"fingerprint": fingerprint},
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json(), None
+    except requests.exceptions.Timeout:
+        logger.warning("Tempo limite ao validar a licença %s.", license_id)
+        return None, "O pedido ao servidor de licenças excedeu o tempo limite."
+    except requests.exceptions.RequestException as exc:
+        logger.exception("Erro ao validar a licença %s: %s", license_id, exc)
+        return None, "Não foi possível contactar o servidor de licenças."
+    except ValueError as exc:  # pragma: no cover - defensive
+        logger.exception("Resposta inválida recebida ao validar a licença %s.", license_id)
+        return None, "Resposta inválida do servidor de licenças."
 
 def activate_new_license(license_key, fingerprint):
     # ... (O conteúdo desta função não muda)
     headers = {"Content-Type": "application/vnd.api+json", "Accept": "application/vnd.api+json"}
     payload = {"meta": {"key": license_key}}
     try:
-        r = requests.post(f"{API_BASE_URL}/licenses/actions/validate-key", json=payload, headers=headers)
+        r = requests.post(
+            f"{API_BASE_URL}/licenses/actions/validate-key",
+            json=payload,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+        )
         r.raise_for_status()
         validation_data = r.json()
         if not validation_data.get("meta", {}).get("valid"):
             return None, validation_data.get("meta", {}).get("detail", "Chave inválida ou expirada.")
         license_id = validation_data["data"]["id"]
-    except requests.exceptions.RequestException:
+    except requests.exceptions.Timeout:
+        logger.warning("Tempo limite ao validar a chave de licença.")
+        return None, "O pedido ao servidor de licenças excedeu o tempo limite."
+    except requests.exceptions.RequestException as exc:
+        logger.exception("Erro ao validar a chave de licença: %s", exc)
         return None, "Não foi possível contactar o servidor para validar a chave."
 
-    activation_payload = {"data": {"type": "machines", "attributes": {"fingerprint": fingerprint}, "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}}}}
+    activation_payload = {
+        "data": {
+            "type": "machines",
+            "attributes": {"fingerprint": fingerprint},
+            "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}},
+        }
+    }
     try:
         token = get_product_token()
-        r = requests.post(f"{API_BASE_URL}/machines", json=activation_payload, headers={"Authorization": f"Bearer {token}", **headers})
+        r = requests.post(
+            f"{API_BASE_URL}/machines",
+            json=activation_payload,
+            headers={"Authorization": f"Bearer {token}", **headers},
+            timeout=REQUEST_TIMEOUT,
+        )
         r.raise_for_status()
         return validation_data, "Ativação bem-sucedida."
+    except requests.exceptions.Timeout:
+        logger.warning("Tempo limite ao ativar a licença para a máquina.")
+        return None, "O pedido ao servidor de licenças excedeu o tempo limite durante a ativação."
     except requests.exceptions.RequestException as e:
-        if e.response and e.response.status_code == 422 and e.response.json().get('errors', [{}])[0].get('code') == 'FINGERPRINT_ALREADY_TAKEN':
-            return validation_data, "Máquina já estava ativada."
+        if e.response is not None:
+            try:
+                body = e.response.json()
+            except ValueError:
+                body = {}
+            if e.response.status_code == 422 and body.get('errors', [{}])[0].get('code') == 'FINGERPRINT_ALREADY_TAKEN':
+                logger.info("A máquina já estava ativada para esta licença.")
+                return validation_data, "Máquina já estava ativada."
+        logger.exception("Erro ao ativar a máquina para a licença.")
         return None, "Não foi possível ativar esta máquina. A licença pode estar em uso."
 
 def save_license_data(license_data, fingerprint: Optional[str] = None):
@@ -293,22 +436,88 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
     if stored_data:
         license_id = stored_data.get("data", {}).get("id")
         if license_id:
-            validation_result = validate_license_with_id(license_id, fingerprint)
-            if validation_result and validation_result.get("meta", {}).get("valid"):
-                return True, validation_result
-    
+            validation_payload, spinner_error = _run_with_spinner(
+                parent_window,
+                "A validar a licença existente...",
+                validate_license_with_id,
+                license_id,
+                fingerprint,
+                timeout=REQUEST_TIMEOUT,
+            )
+
+            if spinner_error:
+                if isinstance(spinner_error, TimeoutError):
+                    logger.warning("Tempo limite ao validar a licença armazenada.")
+                    messagebox.showwarning(
+                        "Tempo limite",
+                        "A validação da licença excedeu o tempo limite. Será necessário tentar novamente.",
+                        parent=parent_window,
+                    )
+                else:
+                    logger.error("Erro inesperado ao validar licença armazenada: %s", spinner_error)
+                    messagebox.showerror(
+                        "Erro na Validação",
+                        "Ocorreu um erro inesperado ao validar a licença existente.",
+                        parent=parent_window,
+                    )
+            elif validation_payload:
+                validation_result, validation_error = validation_payload
+                if validation_result and validation_result.get("meta", {}).get("valid"):
+                    return True, validation_result
+                if validation_result:
+                    detail_message = validation_result.get("meta", {}).get("detail")
+                    if detail_message:
+                        messagebox.showwarning(
+                            "Validação Necessária",
+                            f"{detail_message}\nSerá necessário introduzir novamente a sua chave de licença.",
+                            parent=parent_window,
+                        )
+                if validation_error:
+                    messagebox.showwarning(
+                        "Validação Necessária",
+                        f"{validation_error}\nSerá necessário introduzir novamente a sua chave de licença.",
+                        parent=parent_window,
+                    )
+            else:
+                logger.error("Validação de licença retornou resultado inesperado.")
+
     # REMOVIDO: A criação e destruição da janela temporária foi removida.
 
     while True:
         # Usa a janela principal (escondida) como pai para o diálogo.
         dialog = CustomLicenseDialog(parent_window)
         license_key_input = dialog.result
-        
+
         if not license_key_input:
             messagebox.showwarning("Ativação Necessária", "É necessária uma chave de licença para usar este programa.", parent=parent_window)
             return False, None
-        
-        activation_data, message = activate_new_license(license_key_input, fingerprint)
+
+        activation_payload, spinner_error = _run_with_spinner(
+            parent_window,
+            "A ativar a licença...",
+            activate_new_license,
+            license_key_input,
+            fingerprint,
+            timeout=REQUEST_TIMEOUT,
+        )
+
+        if spinner_error:
+            if isinstance(spinner_error, TimeoutError):
+                error_message = "O pedido ao servidor excedeu o tempo limite. Deseja tentar novamente?"
+                logger.warning("Tempo limite durante a ativação da licença.")
+            else:
+                error_message = "Ocorreu um erro inesperado durante a ativação. Deseja tentar novamente?"
+                logger.error("Erro inesperado durante a ativação da licença: %s", spinner_error)
+
+            if not messagebox.askretrycancel("Falha na Ativação", error_message, parent=parent_window):
+                return False, None
+            continue
+
+        if activation_payload:
+            activation_data, message = activation_payload
+        else:
+            activation_data, message = None, "Erro desconhecido durante a ativação."
+
         if activation_data:
             messagebox.showinfo("Sucesso", "A sua licença foi ativada com sucesso nesta máquina!", parent=parent_window)
             save_license_data(activation_data, fingerprint)
