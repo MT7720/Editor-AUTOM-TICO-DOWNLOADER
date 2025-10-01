@@ -12,7 +12,7 @@ import requests
 
 from security.license_authority import issue_license_token
 
-DEFAULT_ACCOUNT_ID = "9798e344-f107-4cfd-bc83-af9b8e75d352"
+DEFAULT_ACCOUNT_ID = "9798e344-f107-4cfd-bcd3-af9b8e75d352"
 DEFAULT_BASE_URL_TEMPLATE = "https://api.keygen.sh/v1/accounts/{account_id}"
 
 JSON_API_HEADERS = {

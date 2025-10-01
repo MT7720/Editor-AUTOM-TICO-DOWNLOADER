@@ -44,7 +44,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 
-ACCOUNT_ID = os.getenv("KEYGEN_ACCOUNT_ID", "9798e344-f107-4cfd-bc83-af9b8e75d352")
+ACCOUNT_ID = os.getenv("KEYGEN_ACCOUNT_ID", "9798e344-f107-4cfd-bcd3-af9b8e75d352")
 API_BASE_URL = os.getenv(
     "KEYGEN_API_BASE_URL", f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
 )

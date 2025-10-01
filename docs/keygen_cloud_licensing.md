@@ -11,7 +11,7 @@ através dos tokens assinados localmente.
    utilize uma existente.
 2. Dentro da conta, crie um **Product** para o Editor Automático. Guarde o
    `ACCOUNT ID` apresentado no painel (por omissão, o projecto utiliza
-   `9798e344-f107-4cfd-bc83-af9b8e75d352`).
+   `9798e344-f107-4cfd-bcd3-af9b8e75d352`).
 3. Em *Settings → Product Tokens*, gere um **Product Token** de longa duração.
    Este valor **nunca** deve ser distribuído a clientes finais; guarde-o em um
    cofre seguro e exponha-o apenas para serviços internos (por exemplo, a
