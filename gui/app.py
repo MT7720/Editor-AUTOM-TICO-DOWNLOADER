@@ -33,6 +33,8 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
 from ttkbootstrap.tooltip import ToolTip
 
+import license_checker
+
 try:
     import video_processing_logic  # type: ignore
 except ImportError:  # pragma: no cover - fallback assignment
@@ -68,6 +70,9 @@ from .utils import configure_file_logging, logger
 
 
 class VideoEditorApp:
+    LICENSE_CHECK_INTERVAL_MS = 10 * 60 * 1000
+    LICENSE_CHECK_MAX_INTERVAL_MS = 60 * 60 * 1000
+
     def __init__(self, root: Optional[ttk.Window] = None, license_data=None):
         self._owns_root = root is None
         self.root = root or ttk.Window(themename="superhero")
@@ -93,11 +98,17 @@ class VideoEditorApp:
         self.log_file_path = configure_file_logging()
         logger.info("Iniciando aplicativo.")
         self.config = ConfigManager.load_config()
-        self.license_data = license_data
+        self.license_data = license_data or license_checker.load_license_data()
+        self._license_id = self._extract_license_id(self.license_data)
+        self._license_fingerprint = None
+        self._license_check_job = None
+        self._license_check_failures = 0
+        self._license_termination_initiated = False
         initialize_variables(self, self.config)
         initialize_state(self)
         self._create_widgets()
         self.root.after(100, self.post_init_setup)
+        self._initialize_license_monitoring()
 
     def post_init_setup(self):
         # Inicialização do Editor
@@ -107,11 +118,93 @@ class VideoEditorApp:
         self.update_png_preview_job()
         self.on_presenter_settings_change()
         self.check_queue()
-        
+
         # Inicialização do Downloader em background
         self._downloader_initialize_systems()
 
         logger.info("Configuração da UI concluída.")
+
+    def _extract_license_id(self, data: Optional[dict]) -> Optional[str]:
+        if not data:
+            return None
+        try:
+            return data.get("data", {}).get("id")
+        except AttributeError:
+            return None
+
+    def _initialize_license_monitoring(self) -> None:
+        if not self._license_id:
+            logger.debug("Nenhuma licença carregada; monitoramento contínuo desativado.")
+            return
+        try:
+            self._license_fingerprint = license_checker.get_machine_fingerprint()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Não foi possível obter a impressão digital da máquina para revalidação.", exc_info=exc)
+            self._license_fingerprint = None
+        self._schedule_license_check(initial=True)
+
+    def _license_check_delay_ms(self, *, initial: bool = False) -> int:
+        base = self.LICENSE_CHECK_INTERVAL_MS
+        if initial or self._license_check_failures <= 0:
+            return base
+        delay = base * (2 ** self._license_check_failures)
+        return min(delay, self.LICENSE_CHECK_MAX_INTERVAL_MS)
+
+    def _schedule_license_check(self, *, initial: bool = False) -> None:
+        delay = self._license_check_delay_ms(initial=initial)
+        if self._license_check_job is not None:
+            try:
+                self.root.after_cancel(self._license_check_job)
+            except Exception:
+                pass
+        logger.debug(
+            "Agendando verificação de licença em %s segundos (tentativas falhas: %s).",
+            delay / 1000,
+            self._license_check_failures,
+        )
+        self._license_check_job = self.root.after(delay, self._run_license_check)
+
+    def _run_license_check(self) -> None:
+        self._license_check_job = None
+        if not self._license_id or self._license_termination_initiated:
+            return
+        fingerprint = self._license_fingerprint or license_checker.get_machine_fingerprint()
+        try:
+            response = license_checker.validate_license_with_id(self._license_id, fingerprint)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Erro inesperado ao contactar o servidor de licenças.", exc_info=exc)
+            response = None
+
+        if not response:
+            self._license_check_failures += 1
+            logger.warning(
+                "Não foi possível validar a licença (falha de rede %s). Nova tentativa em %s segundos.",
+                self._license_check_failures,
+                self._license_check_delay_ms(initial=False) / 1000,
+            )
+            self._schedule_license_check()
+            return
+
+        if response.get("meta", {}).get("valid"):
+            if self._license_check_failures:
+                logger.info("Conectividade restabelecida. Licença validada novamente com o servidor.")
+            self._license_check_failures = 0
+            self._schedule_license_check()
+            return
+
+        detail = response.get("meta", {}).get("detail") or "A licença está expirada ou inválida."
+        logger.error("Licença inválida detectada: %s", detail)
+        self._handle_invalid_license(detail)
+
+    def _handle_invalid_license(self, detail: str) -> None:
+        if self._license_termination_initiated:
+            return
+        self._license_termination_initiated = True
+        Messagebox.show_warning(detail, "Licença inválida", parent=self.root)
+        try:
+            self.root.destroy()
+        finally:
+            sys.exit(1)
 
     def _create_widgets(self):
         self.root.columnconfigure(0, weight=1)
@@ -1533,13 +1626,20 @@ class VideoEditorApp:
              if Messagebox.yesno("Um processamento está em andamento. Deseja realmente sair e cancelar a tarefa?", "Sair?", parent=self.root):
                  self.request_cancellation()
              else:
-                return 
+                return
 
-        self.unload_all_font_resources() 
+        if self._license_check_job is not None:
+            try:
+                self.root.after_cancel(self._license_check_job)
+            except Exception:
+                pass
+            self._license_check_job = None
+
+        self.unload_all_font_resources()
         if self.presenter_processed_frame_path and os.path.exists(self.presenter_processed_frame_path):
             try: os.remove(self.presenter_processed_frame_path)
             except OSError as e: logger.warning(f"Não foi possível remover o arquivo temporário {self.presenter_processed_frame_path}: {e}")
-        
+
         self.save_current_config()
         self.thread_executor.shutdown(wait=False, cancel_futures=True)
         if video_processing_logic and hasattr(video_processing_logic, 'process_manager'):
