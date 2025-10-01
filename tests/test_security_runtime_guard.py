@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import types
@@ -8,10 +9,16 @@ import pytest
 from security import runtime_guard
 
 
+TEST_HMAC_KEY = b"runtime-guard-test-key"
+
+
 @pytest.fixture(autouse=True)
 def reset_logger_and_modules(monkeypatch, tmp_path):
     runtime_guard._logger = None
+    monkeypatch.setattr(runtime_guard, "_hmac_key_cache", runtime_guard._HMAC_KEY_UNINITIALIZED)
     monkeypatch.setattr(runtime_guard, "_resolve_log_path", lambda: tmp_path / "guard.log")
+    encoded_key = base64.b64encode(TEST_HMAC_KEY).decode()
+    monkeypatch.setenv("RUNTIME_GUARD_HMAC_KEY", encoded_key)
     yield
     runtime_guard._logger = None
 
@@ -149,7 +156,7 @@ def test_collect_resource_violations_enforced_when_frozen(monkeypatch, tmp_path)
     resource_path.write_text("conteudo")
 
     wrong_hash = "0" * 64
-    signature = hmac.new(runtime_guard._HMAC_KEY, wrong_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+    signature = hmac.new(TEST_HMAC_KEY, wrong_hash.encode("utf-8"), hashlib.sha256).hexdigest()
 
     manifest = {
         "algorithm": "sha256",
@@ -167,3 +174,26 @@ def test_collect_resource_violations_enforced_when_frozen(monkeypatch, tmp_path)
     violations = runtime_guard._collect_resource_violations(manifest)
     assert violations
     assert "Hash divergente" in violations[0]
+
+
+def test_collect_resource_violations_fail_when_key_missing(monkeypatch, tmp_path):
+    fake_sys = types.SimpleNamespace(frozen=True)
+    monkeypatch.setattr(runtime_guard, "sys", fake_sys)
+
+    monkeypatch.delenv("RUNTIME_GUARD_HMAC_KEY", raising=False)
+    monkeypatch.setattr(runtime_guard, "_hmac_key_cache", runtime_guard._HMAC_KEY_UNINITIALIZED)
+
+    manifest = {
+        "algorithm": "sha256",
+        "resources": {
+            "example": {
+                "path": str(tmp_path / "resource.txt"),
+                "hash": "123",
+                "signature": "abc",
+            }
+        },
+    }
+
+    violations = runtime_guard._collect_resource_violations(manifest)
+    assert violations
+    assert "Chave de assinatura" in violations[0]

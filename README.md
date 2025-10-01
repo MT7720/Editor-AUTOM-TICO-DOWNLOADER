@@ -14,7 +14,8 @@ Durante o desenvolvimento, as verificações de integridade do `security.runtime
 ficam desativadas para permitir ajustes livres no código-fonte. A validação de hashes
 dos recursos é aplicada apenas nos executáveis empacotados (por exemplo, builds
 gerados com PyInstaller), garantindo que distribuições oficiais mantenham os ficheiros
-críticos intactos.
+críticos intactos. O processo de geração da chave de assinatura e a rotação das
+assinaturas do manifesto estão documentados em [`docs/runtime_guard_key_rotation.md`](docs/runtime_guard_key_rotation.md).
 
 ## Monitoramento da licença
 
