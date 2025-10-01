@@ -252,9 +252,9 @@ class VideoEditorApp:
         ttk.Label(self.video_settings_section, text="Codificador:").grid(row=1, column=0, sticky="w", padx=(0,10), pady=5)
         self.video_codec_combobox = ttk.Combobox(self.video_settings_section, textvariable=self.video_codec_var, state="readonly")
         self.video_codec_combobox.grid(row=1, column=1, sticky="ew")
-        
+
         self.slideshow_section = ttk.LabelFrame(tab, text=" Configurações de Slideshow ", padding=15)
-        self.slideshow_section.grid(row=2, column=0, sticky="ew")
+        self.slideshow_section.grid(row=1, column=0, sticky="ew")
         self.slideshow_section.columnconfigure(1, weight=1)
         
         ttk.Label(self.slideshow_section, text="Duração por Imagem (s):").grid(row=0, column=0, sticky="w", padx=(0,10), pady=5)
@@ -273,23 +273,16 @@ class VideoEditorApp:
         ttk.Label(self.slideshow_section, text="Efeito de Movimento:").grid(row=3, column=0, sticky="w", padx=(0,10), pady=5)
         ttk.Combobox(self.slideshow_section, textvariable=self.motion_var, values=SLIDESHOW_MOTIONS, state="readonly").grid(row=3, column=1, sticky="ew")
 
-    def _create_audio_tab(self):
-        # ... (sem alterações) ...
-        tab = ttk.Frame(self.notebook, padding=(20, 15))
-        self.notebook.add(tab, text=" Editor: Áudio ")
-        tab.columnconfigure(0, weight=1)
-        audio_settings_section = ttk.LabelFrame(tab, text=" Volumes ", padding=15)
-        audio_settings_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
-        audio_settings_section.columnconfigure(1, weight=1)
-        
-        self._create_volume_slider(audio_settings_section, 0, "Volume da Narração:", self.narration_volume_var, -20, 20)
-        self._create_volume_slider(audio_settings_section, 1, "Volume da Música:", self.music_volume_var, -60, 0)
-
         fade_out_section = ttk.LabelFrame(tab, text=" Encerramento (Fade Out) ", padding=15)
-        fade_out_section.grid(row=1, column=0, sticky="ew")
+        fade_out_section.grid(row=2, column=0, sticky="ew", pady=(20, 0))
         fade_out_section.columnconfigure(1, weight=1)
 
-        cb = ttk.Checkbutton(fade_out_section, text="Adicionar tela preta com fade out de áudio no final", variable=self.add_fade_out_var, bootstyle="round-toggle")
+        cb = ttk.Checkbutton(
+            fade_out_section,
+            text="Adicionar tela preta com fade out de áudio no final",
+            variable=self.add_fade_out_var,
+            bootstyle="round-toggle"
+        )
         cb.grid(row=0, column=0, columnspan=2, sticky="w", pady=5)
         ToolTip(cb, "Adiciona um final suave ao vídeo, escurecendo a tela e silenciando o áudio.")
 
@@ -297,9 +290,28 @@ class VideoEditorApp:
         fade_duration_frame = ttk.Frame(fade_out_section)
         fade_duration_frame.grid(row=1, column=1, sticky="ew")
         fade_duration_frame.columnconfigure(0, weight=1)
-        
-        ttk.Scale(fade_duration_frame, from_=1, to=20, variable=self.fade_out_duration_var, orient=HORIZONTAL, command=lambda v: self.fade_out_duration_var.set(int(float(v)))).grid(row=0, column=0, sticky="ew", padx=(0, 10))
+
+        ttk.Scale(
+            fade_duration_frame,
+            from_=1,
+            to=20,
+            variable=self.fade_out_duration_var,
+            orient=HORIZONTAL,
+            command=lambda v: self.fade_out_duration_var.set(int(float(v)))
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 10))
         ttk.Label(fade_duration_frame, textvariable=self.fade_out_duration_var, width=3).grid(row=0, column=1)
+
+    def _create_audio_tab(self):
+        # ... (sem alterações) ...
+        tab = ttk.Frame(self.notebook, padding=(20, 15))
+        self.notebook.add(tab, text=" Editor: Áudio ")
+        tab.columnconfigure(0, weight=1)
+        audio_settings_section = ttk.LabelFrame(tab, text=" Volumes ", padding=15)
+        audio_settings_section.grid(row=0, column=0, sticky="ew")
+        audio_settings_section.columnconfigure(1, weight=1)
+
+        self._create_volume_slider(audio_settings_section, 0, "Volume da Narração:", self.narration_volume_var, -20, 20)
+        self._create_volume_slider(audio_settings_section, 1, "Volume da Música:", self.music_volume_var, -60, 0)
 
     def _create_intro_tab(self):
         tab = ttk.Frame(self.notebook, padding=(20, 15))
