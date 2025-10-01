@@ -23,11 +23,13 @@ MANIFEST: Dict[str, object] = {
             "path": "license_checker.py",
             "hash": "d8731aa591ebf4b432ba39de16da43e56174e5eb4128c1c3edda51d5d2408be1",
             "signature": "840e578f25e420fc0e40cd711a1a449089834f13443fb68b15bda32308c9e427",
+            "normalize_newlines": True,
         },
         "video_processing_logic.py": {
             "path": "video_processing_logic.py",
             "hash": "e5ea0942d43c4f9f0bbc3164e1439e5306ac34e88fa6e91a49eeaadce83ccbfb",
             "signature": "394687323ce0ab8b2cc7056c3cf4e217845771cd0cbdb55499c3dd54dbd332ae",
+            "normalize_newlines": True,
         },
     },
     "executables": {
@@ -90,10 +92,12 @@ def _load_manifest() -> Dict[str, object]:
     return MANIFEST
 
 
-def _calculate_file_hash(path: Path, algorithm: str) -> str:
+def _calculate_file_hash(path: Path, algorithm: str, *, normalize_newlines: bool = False) -> str:
     h = hashlib.new(algorithm)
     with path.open("rb") as file_handle:
         for chunk in iter(lambda: file_handle.read(65536), b""):
+            if normalize_newlines:
+                chunk = chunk.replace(b"\r\n", b"\n")
             h.update(chunk)
     return h.hexdigest()
 
@@ -127,7 +131,8 @@ def _collect_resource_violations(manifest: Dict[str, object]) -> List[str]:
         if not path.exists():
             violations.append(f"Recurso esperado não encontrado: {path}")
             continue
-        calculated_hash = _calculate_file_hash(path, algorithm)
+        normalize_newlines = bool(resource.get("normalize_newlines"))
+        calculated_hash = _calculate_file_hash(path, algorithm, normalize_newlines=normalize_newlines)
         if not hmac.compare_digest(calculated_hash, expected_hash):
             violations.append(
                 f"Hash divergente para '{name}'. Esperado={expected_hash} Obtido={calculated_hash}"

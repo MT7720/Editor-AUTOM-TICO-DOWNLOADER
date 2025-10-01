@@ -1,4 +1,5 @@
 import types
+from pathlib import Path
 
 import pytest
 
@@ -72,3 +73,50 @@ def test_select_executable_entry_prefers_win_amd64_for_64bit_pyinstaller(monkeyp
 
     entry = runtime_guard._select_executable_entry(executables)
     assert entry == executables["win_amd64"]
+
+
+def test_collect_resource_violations_accepts_crlf_when_normalizing(monkeypatch, tmp_path):
+    original_path = Path("license_checker.py")
+    lf_copy = tmp_path / "license_checker_lf.py"
+    lf_copy.write_bytes(original_path.read_bytes())
+
+    crlf_copy = tmp_path / "license_checker_crlf.py"
+    crlf_copy.write_bytes(lf_copy.read_bytes().replace(b"\n", b"\r\n"))
+
+    base_resource = runtime_guard.MANIFEST["resources"]["license_checker.py"].copy()
+    base_resource["normalize_newlines"] = True
+
+    algorithm = runtime_guard.MANIFEST.get("algorithm", "sha256")
+
+    manifest_template = {
+        "algorithm": algorithm,
+        "resources": {"license_checker.py": base_resource},
+    }
+
+    def fake_resolve_path(resource):
+        return Path(resource["path"])
+
+    monkeypatch.setattr(runtime_guard, "_resolve_resource_path", fake_resolve_path)
+
+    manifest_lf = {
+        **manifest_template,
+        "resources": {
+            "license_checker.py": {
+                **base_resource,
+                "path": str(lf_copy),
+            }
+        },
+    }
+
+    manifest_crlf = {
+        **manifest_template,
+        "resources": {
+            "license_checker.py": {
+                **base_resource,
+                "path": str(crlf_copy),
+            }
+        },
+    }
+
+    assert runtime_guard._collect_resource_violations(manifest_lf) == []
+    assert runtime_guard._collect_resource_violations(manifest_crlf) == []
