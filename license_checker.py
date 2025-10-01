@@ -39,6 +39,15 @@ SPINNER_POLL_INTERVAL_MS = 100
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2)
 
+_PRODUCT_TOKEN_PLACEHOLDER_VALUES = {
+    "EDITOR_AUTOMATICO_PRODUCT_TOKEN_PLACEHOLDER",
+    "YOUR_PRODUCT_TOKEN_HERE",
+    "REPLACE_ME",
+    "CHANGE_ME",
+    "CHANGEME",
+}
+_PRODUCT_TOKEN_PLACEHOLDER_SUBSTRINGS = ("PLACEHOLDER",)
+
 
 class SpinnerDialog(ttk.Toplevel):
     def __init__(self, parent, message: str):
@@ -227,19 +236,51 @@ def _load_secret_from_file(path: str) -> Optional[str]:
         return None
 
 
+def _sanitize_product_token(token: Optional[str], source: str) -> Optional[str]:
+    """Normaliza tokens e ignora valores de placeholder configurados por engano."""
+
+    if not token:
+        return None
+
+    candidate = token.strip()
+    if not candidate:
+        return None
+
+    candidate_upper = candidate.upper()
+    if candidate_upper in _PRODUCT_TOKEN_PLACEHOLDER_VALUES or any(
+        substring in candidate_upper for substring in _PRODUCT_TOKEN_PLACEHOLDER_SUBSTRINGS
+    ):
+        logger.debug(
+            "Token de produto obtido de %s corresponde a um placeholder e será ignorado.",
+            source,
+        )
+        return None
+
+    return candidate
+
+
 @lru_cache(maxsize=1)
 def get_product_token() -> str:
-    token = os.getenv(PRODUCT_TOKEN_ENV_VAR)
+    token = _sanitize_product_token(
+        os.getenv(PRODUCT_TOKEN_ENV_VAR),
+        f"variável de ambiente {PRODUCT_TOKEN_ENV_VAR}",
+    )
     if token:
-        return token.strip()
+        return token
 
     secret_file = os.getenv(PRODUCT_TOKEN_FILE_ENV_VAR)
     if secret_file:
-        file_token = _load_secret_from_file(secret_file)
+        file_token = _sanitize_product_token(
+            _load_secret_from_file(secret_file),
+            f"ficheiro apontado por {PRODUCT_TOKEN_FILE_ENV_VAR}",
+        )
         if file_token:
             return file_token
 
-    resource_token = _load_secret_from_file(resource_path(PRODUCT_TOKEN_RESOURCE))
+    resource_token = _sanitize_product_token(
+        _load_secret_from_file(resource_path(PRODUCT_TOKEN_RESOURCE)),
+        "recurso incorporado product_token.dat",
+    )
     if resource_token:
         return resource_token
 
@@ -250,7 +291,10 @@ def get_product_token() -> str:
     ]
 
     for candidate in executable_candidates:
-        file_token = _load_secret_from_file(candidate)
+        file_token = _sanitize_product_token(
+            _load_secret_from_file(candidate),
+            f"ficheiro {candidate}",
+        )
         if file_token:
             return file_token
 
@@ -266,7 +310,10 @@ def _get_product_token_optional() -> Optional[str]:
     try:
         return get_product_token()
     except RuntimeError:
-        logger.info("Token de produto não configurado. Tentando autenticação com a chave de licença.")
+        logger.info(
+            "Token de produto não configurado ou definido com placeholder. "
+            "Será utilizada a autenticação com a chave de licença."
+        )
         return None
 
 
