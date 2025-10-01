@@ -154,7 +154,11 @@ def execute_ffmpeg(
                             progress_updates_seen = True
                         if progress_callback:
                             progress_callback(progress_pct)
-                        if progress_pct - last_reported_pct >= 0.01:
+                        should_report = progress_pct - last_reported_pct >= 0.01
+                        if progress_pct >= 1.0 and last_reported_pct < 1.0:
+                            progress_queue.put(("status", f"[{log_prefix}] 100% concluído", "info"))
+                            last_reported_pct = 1.0
+                        elif should_report:
                             progress_queue.put(("status", f"[{log_prefix}] {int(progress_pct * 100)}% concluído", "info"))
                             last_reported_pct = progress_pct
                 else:
@@ -191,6 +195,7 @@ def execute_ffmpeg(
     if process.returncode == 0 and not stalled:
         if progress_callback:
             progress_callback(1.0)
+        progress_queue.put(("status", f"[{log_prefix}] Comando concluído", "info"))
         return True
 
     if stalled and process.returncode == 0:
