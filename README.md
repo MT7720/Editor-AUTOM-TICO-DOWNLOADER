@@ -37,6 +37,8 @@ Quando for necessário reemitir uma licença, gere um novo token com `security.l
 
 O módulo `security/license_authority.py` inclui funções reutilizáveis e uma pequena ferramenta de automação para emissão em lote. Consulte [`docs/offline_license_issuance.md`](docs/offline_license_issuance.md) para instruções completas sobre a geração dos tokens, bem como orientações de migração para quem ainda utiliza chaves Keygen legadas.
 
+Para equipas que pretendem continuar a gerir clientes e políticas através do Keygen, o guia [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md) descreve como criar licenças na plataforma e gerar os tokens offline compatíveis com o Editor Automático.
+
 ## Organização das abas do editor
 
 - **Editor: Vídeo** – ajuste a resolução, codec, comportamento do slideshow e configure o encerramento (fade out) que escurece a imagem enquanto reduz o áudio.
