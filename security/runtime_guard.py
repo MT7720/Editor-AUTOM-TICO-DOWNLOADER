@@ -1,44 +1,24 @@
 """Guarda de segurança executado antes da inicialização da GUI."""
 from __future__ import annotations
 
+import base64
+import binascii
 import ctypes
 import hashlib
 import hmac
 import inspect
+import json
 import logging
 import os
 import platform
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 LOG_NAME = "security.runtime_guard"
 LOG_FILE_NAME = "runtime_guard.log"
-_HMAC_KEY = b"editor-runtime-guard-key"
-
-MANIFEST: Dict[str, object] = {
-    "algorithm": "sha256",
-    "resources": {
-        "license_checker.py": {
-            "path": "license_checker.py",
-            "hash": "93787fdb53c6a665fef32e901aea948d1493995afc40db369d8aee79daafd2bd",
-            "signature": "158289e66b06fcbfb8c7d2a4e69086d6a8ecc262f2171ebbc27f95c56201457a",
-            "normalize_newlines": True,
-        },
-        "video_processing_logic.py": {
-            "path": "video_processing_logic.py",
-            "hash": "e5ea0942d43c4f9f0bbc3164e1439e5306ac34e88fa6e91a49eeaadce83ccbfb",
-            "signature": "394687323ce0ab8b2cc7056c3cf4e217845771cd0cbdb55499c3dd54dbd332ae",
-            "normalize_newlines": True,
-        },
-    },
-    "executables": {
-        "default": {
-            "hash": "b859e40bc51661cfb179a10749fddf146f352fe6c9ee3acb370ddc12bc6900ce",
-            "signature": "342024f7712fa9a34377e1e4eb62d911b8cac2933d8cdc70d8e634505322a68a",
-        },
-    },
-}
+_MANIFEST_FILENAME = "runtime_manifest.json"
+_HMAC_KEY_ENV_VAR = "RUNTIME_GUARD_HMAC_KEY"
 
 
 class SecurityViolation(RuntimeError):
@@ -46,6 +26,9 @@ class SecurityViolation(RuntimeError):
 
 
 _logger: Optional[logging.Logger] = None
+_manifest_cache: Optional[Dict[str, object]] = None
+_HMAC_KEY_UNINITIALIZED: object = object()
+_hmac_key_cache: object = _HMAC_KEY_UNINITIALIZED
 
 
 def _get_logger() -> logging.Logger:
@@ -88,8 +71,52 @@ def _get_app_base_path() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _manifest_path() -> Path:
+    return Path(__file__).with_name(_MANIFEST_FILENAME)
+
+
 def _load_manifest() -> Dict[str, object]:
-    return MANIFEST
+    global _manifest_cache
+    if _manifest_cache is None:
+        manifest_path = _manifest_path()
+        with manifest_path.open("r", encoding="utf-8") as file_handle:
+            _manifest_cache = cast(Dict[str, object], json.load(file_handle))
+    return _manifest_cache
+
+
+MANIFEST: Dict[str, object] = _load_manifest()
+
+
+def _load_hmac_key() -> Optional[bytes]:
+    global _hmac_key_cache
+    if _hmac_key_cache is not _HMAC_KEY_UNINITIALIZED:
+        return cast(Optional[bytes], _hmac_key_cache)
+
+    raw_value = os.getenv(_HMAC_KEY_ENV_VAR)
+    if not raw_value:
+        _get_logger().error(
+            "Variável de ambiente %s ausente; assinaturas do manifesto não podem ser validadas.",
+            _HMAC_KEY_ENV_VAR,
+        )
+        _hmac_key_cache = None
+        return None
+
+    try:
+        key = base64.b64decode(raw_value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        _get_logger().error(
+            "Falha ao decodificar a chave HMAC a partir de %s: %s", _HMAC_KEY_ENV_VAR, exc
+        )
+        _hmac_key_cache = None
+        return None
+
+    if not key:
+        _get_logger().error("Chave HMAC decodificada é vazia; verifique a configuração do ambiente")
+        _hmac_key_cache = None
+        return None
+
+    _hmac_key_cache = key
+    return key
 
 
 def _calculate_file_hash(path: Path, algorithm: str, *, normalize_newlines: bool = False) -> str:
@@ -103,7 +130,10 @@ def _calculate_file_hash(path: Path, algorithm: str, *, normalize_newlines: bool
 
 
 def _verify_signature(expected_hash: str, signature: str) -> bool:
-    expected_signature = hmac.new(_HMAC_KEY, expected_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+    key = _load_hmac_key()
+    if key is None:
+        return False
+    expected_signature = hmac.new(key, expected_hash.encode("utf-8"), hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected_signature, signature)
 
 
@@ -121,6 +151,12 @@ def _collect_resource_violations(manifest: Dict[str, object]) -> List[str]:
     # empacotados.
     if not getattr(sys, "frozen", False):
         return []
+
+    key = _load_hmac_key()
+    if key is None:
+        return [
+            "Chave de assinatura do manifesto ausente ou inválida; não é possível validar recursos",
+        ]
 
     algorithm = manifest.get("algorithm", "sha256")
     resources: Dict[str, Dict[str, str]] = manifest.get("resources", {})  # type: ignore[assignment]
@@ -190,6 +226,11 @@ def _collect_executable_violations(manifest: Dict[str, object]) -> List[str]:
     if not getattr(sys, "frozen", False):
         return []
 
+    if _load_hmac_key() is None:
+        return [
+            "Chave de assinatura do manifesto ausente ou inválida; não é possível validar o executável",
+        ]
+
     entry = _select_executable_entry(executables)
     if not entry:
         return ["Nenhuma referência de hash disponível para o executável atual"]
@@ -205,7 +246,7 @@ def _collect_executable_violations(manifest: Dict[str, object]) -> List[str]:
     if not executable_path.exists():
         return [f"Executável atual não encontrado: {executable_path}"]
 
-    algorithm = MANIFEST.get("algorithm", "sha256")
+    algorithm = manifest.get("algorithm", "sha256")
     calculated_hash = _calculate_file_hash(executable_path, algorithm)  # type: ignore[arg-type]
     allowed = {expected_hash}
 
