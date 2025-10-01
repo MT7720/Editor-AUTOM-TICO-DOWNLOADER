@@ -67,6 +67,21 @@ MIGRATION_REQUIRED_MESSAGE = (
     "O formato antigo de chaves do Keygen não é suportado. Solicite um novo token "
     "offline emitido pela equipa de suporte."
 )
+LEGACY_LICENSE_MIGRATION_URL_ENV_VAR = "LEGACY_LICENSE_MIGRATION_URL"
+_LEGACY_MIGRATION_TIMEOUT_DEFAULT = 15
+
+try:
+    LEGACY_LICENSE_MIGRATION_TIMEOUT = max(
+        1,
+        int(
+            os.getenv(
+                "LEGACY_LICENSE_MIGRATION_TIMEOUT",
+                str(_LEGACY_MIGRATION_TIMEOUT_DEFAULT),
+            )
+        ),
+    )
+except ValueError:
+    LEGACY_LICENSE_MIGRATION_TIMEOUT = _LEGACY_MIGRATION_TIMEOUT_DEFAULT
 
 _REVOCATION_CACHE: Dict[str, Any] = {"timestamp": 0.0, "serials": set(), "error": None}
 
@@ -441,6 +456,34 @@ def _clear_revocation_cache() -> None:
     _REVOCATION_CACHE["timestamp"] = 0.0
     _REVOCATION_CACHE["serials"] = set()
     _REVOCATION_CACHE["error"] = None
+
+
+def _extract_error_from_payload(payload: Any) -> Optional[str]:
+    if isinstance(payload, dict):
+        for key in ("detail", "message", "error"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        meta = payload.get("meta")
+        if isinstance(meta, dict):
+            extracted = _extract_error_from_payload(meta)
+            if extracted:
+                return extracted
+        errors = payload.get("errors")
+        if isinstance(errors, list):
+            for item in errors:
+                extracted = _extract_error_from_payload(item)
+                if extracted:
+                    return extracted
+    return None
+
+
+def _extract_error_message(response: requests.Response) -> Optional[str]:
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    return _extract_error_from_payload(payload)
 
 
 @lru_cache()
@@ -917,9 +960,134 @@ def validate_license_with_id(license_id, fingerprint, license_key: Optional[str]
     return response_payload, None
 
 
+def _exchange_legacy_license_key(
+    license_key: str, fingerprint: str
+) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
+    migration_url = os.getenv(LEGACY_LICENSE_MIGRATION_URL_ENV_VAR)
+    if not migration_url:
+        logger.info("Serviço de migração de licenças legadas não configurado.")
+        return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    delegated_token: Optional[str] = None
+    delegated_error: Optional[str] = None
+
+    try:
+        delegated_token, delegated_error = _get_delegated_credential(license_key)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Falha inesperada ao obter credencial delegada para migração.")
+        delegated_token = None
+        delegated_error = str(exc)
+
+    if delegated_token:
+        headers["Authorization"] = f"Bearer {delegated_token}"
+    else:
+        product_token = _get_product_token_optional()
+        if product_token:
+            headers.setdefault("Authorization", f"Bearer {product_token}")
+        elif delegated_error:
+            logger.debug("Prosseguindo migração sem credencial delegada: %s", delegated_error)
+
+    payload = {"licenseKey": license_key, "fingerprint": fingerprint}
+
+    try:
+        response = requests.post(
+            migration_url,
+            json=payload,
+            headers=headers,
+            timeout=LEGACY_LICENSE_MIGRATION_TIMEOUT,
+        )
+    except requests.exceptions.Timeout:
+        logger.warning("Tempo limite ao contactar serviço de migração de licenças.")
+        return None, "O serviço de migração demorou demasiado tempo a responder.", None
+    except requests.exceptions.RequestException as exc:
+        logger.exception("Erro ao contactar serviço de migração: %s", exc)
+        return None, "Não foi possível contactar o serviço de migração de licenças.", None
+
+    if response.status_code in (401, 403):
+        detail = _extract_error_message(response)
+        message = detail or "Autenticação necessária para migrar a licença."
+        return None, message, "auth_required"
+
+    if response.status_code >= 400:
+        detail = _extract_error_message(response)
+        message = detail or "A migração da licença falhou."
+        return None, message, None
+
+    try:
+        response_payload = response.json()
+    except ValueError:
+        logger.error("Resposta inválida recebida do serviço de migração.")
+        return None, "Resposta inválida do serviço de migração de licenças.", None
+
+    token = None
+    if isinstance(response_payload, dict):
+        token = response_payload.get("token")
+        if not token:
+            data_section = response_payload.get("data")
+            if isinstance(data_section, dict):
+                token = data_section.get("token") or data_section.get("attributes", {}).get("token")
+    if not token or not isinstance(token, str):
+        logger.error("Serviço de migração não devolveu um token válido.")
+        return None, "O serviço de migração não devolveu um token válido.", None
+
+    try:
+        claims = _verify_offline_token(token)
+        validated_claims = _validate_claims(token, claims, fingerprint)
+    except LicenseValidationError as exc:
+        logger.warning("Token migrado inválido: %s", exc)
+        return None, f"O token migrado é inválido: {exc}", None
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Erro inesperado ao validar token migrado.")
+        return None, "Não foi possível validar o token devolvido pela migração.", None
+
+    license_id = None
+    if isinstance(response_payload, dict):
+        license_id = (
+            response_payload.get("license")
+            or response_payload.get("licenseId")
+            or response_payload.get("id")
+        )
+        if not license_id:
+            data_section = response_payload.get("data")
+            if isinstance(data_section, dict):
+                license_id = (
+                    data_section.get("id")
+                    or data_section.get("license")
+                    or data_section.get("attributes", {}).get("license")
+                )
+
+    activation_payload: Dict[str, Any] = {
+        "data": {
+            "id": license_id or validated_claims.get("customer_id"),
+            "type": "licenses",
+            "attributes": {
+                "exp": validated_claims.get("exp"),
+                "seats": validated_claims.get("seats"),
+                "serial": validated_claims.get("serial"),
+                "fingerprint": validated_claims.get("fingerprint"),
+            },
+        },
+        "meta": {
+            "valid": True,
+            "key": token,
+            "claims": validated_claims,
+            "legacy_key": license_key,
+            "source": "migration",
+        },
+    }
+
+    return activation_payload, "Licença migrada com sucesso.", None
+
+
 def activate_new_license(license_key, fingerprint):
     if not license_key or "." not in license_key:
-        return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+        activation_payload, message, error_code = _exchange_legacy_license_key(
+            license_key, fingerprint
+        )
+        if activation_payload:
+            return activation_payload, message, error_code
+        return None, message or MIGRATION_REQUIRED_MESSAGE, error_code or "migration_required"
 
     try:
         claims = _verify_offline_token(license_key)
