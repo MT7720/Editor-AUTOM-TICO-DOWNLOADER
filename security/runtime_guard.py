@@ -114,6 +114,14 @@ def _resolve_resource_path(resource: Dict[str, str]) -> Path:
 
 
 def _collect_resource_violations(manifest: Dict[str, object]) -> List[str]:
+    # Quando executado em modo desenvolvimento (sem estar empacotado via PyInstaller),
+    # os recursos são carregados diretamente do diretório do projeto. Esse fluxo está
+    # sujeito a modificações legítimas durante o desenvolvimento e, portanto,
+    # ignoramos a validação de hashes nesses casos, mantendo-a apenas para builds
+    # empacotados.
+    if not getattr(sys, "frozen", False):
+        return []
+
     algorithm = manifest.get("algorithm", "sha256")
     resources: Dict[str, Dict[str, str]] = manifest.get("resources", {})  # type: ignore[assignment]
     violations: List[str] = []

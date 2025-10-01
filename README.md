@@ -10,6 +10,12 @@ Para iniciar a interface gráfica, basta executar:
 python main.py
 ```
 
+Durante o desenvolvimento, as verificações de integridade do `security.runtime_guard`
+ficam desativadas para permitir ajustes livres no código-fonte. A validação de hashes
+dos recursos é aplicada apenas nos executáveis empacotados (por exemplo, builds
+gerados com PyInstaller), garantindo que distribuições oficiais mantenham os ficheiros
+críticos intactos.
+
 ## Monitoramento da licença
 
 Depois de validada, a aplicação continua a verificar periodicamente o status da licença junto ao Keygen utilizando o identificador salvo no ficheiro `license.json`. Em caso de falha de rede temporária, o processo regista o erro nos logs e aguarda um intervalo crescente (exponencial) antes de repetir a verificação, evitando encerramentos acidentais. Caso o servidor informe que a licença expirou ou se tornou inválida, o utilizador é avisado e o programa termina imediatamente para impedir o uso não autorizado.
