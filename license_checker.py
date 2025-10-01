@@ -1,13 +1,20 @@
+import base64
+import json
 import os
+import secrets
 import sys
-import requests
 import hashlib
+import logging
 import platform
 import subprocess
+from functools import lru_cache
+from typing import Any, Dict, Optional
+
+import requests
 import tkinter as tk
 from tkinter import messagebox
-import json
 import ttkbootstrap as ttk
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from ttkbootstrap.constants import *
 
 def resource_path(relative_path):
@@ -18,8 +25,11 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+logger = logging.getLogger(__name__)
+
 ACCOUNT_ID = "9798e344-f107-4cfd-bc83-af9b8e75d352"
-PRODUCT_TOKEN = "prod-e3d63a2e5b9b825ec166c0bd631be99c5e9cd27761b3f899a3a4014f537e64bdv3"
+PRODUCT_TOKEN_ENV_VAR = "KEYGEN_PRODUCT_TOKEN"
+PRODUCT_TOKEN_FILE_ENV_VAR = "KEYGEN_PRODUCT_TOKEN_FILE"
 API_BASE_URL = f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
 ICON_FILE = resource_path("icone.ico")
 
@@ -103,6 +113,86 @@ def get_app_data_path():
 APP_DATA_PATH = get_app_data_path()
 LICENSE_FILE_PATH = os.path.join(APP_DATA_PATH, "license.json")
 
+
+class LicenseTamperedError(RuntimeError):
+    """Raised when the persisted license payload fails integrity checks."""
+
+
+def _load_secret_from_file(path: str) -> Optional[str]:
+    try:
+        with open(path, "r", encoding="utf-8") as secret_file:
+            content = secret_file.read().strip()
+            return content or None
+    except OSError:
+        return None
+
+
+@lru_cache(maxsize=1)
+def get_product_token() -> str:
+    token = os.getenv(PRODUCT_TOKEN_ENV_VAR)
+    if token:
+        return token.strip()
+
+    secret_file = os.getenv(PRODUCT_TOKEN_FILE_ENV_VAR)
+    if secret_file:
+        file_token = _load_secret_from_file(secret_file)
+        if file_token:
+            return file_token
+
+    raise RuntimeError(
+        "A variável de ambiente 'KEYGEN_PRODUCT_TOKEN' (ou ficheiro apontado por "
+        "'KEYGEN_PRODUCT_TOKEN_FILE') deve estar definida antes de utilizar a "
+        "validação de licenças."
+    )
+
+
+def _derive_encryption_key(fingerprint: str) -> bytes:
+    return hashlib.sha256(fingerprint.encode("utf-8")).digest()
+
+
+def _fingerprint_marker(fingerprint: str) -> str:
+    return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+
+
+def _encrypt_license_payload(data: Dict[str, Any], fingerprint: str) -> Dict[str, str]:
+    plaintext = json.dumps(data).encode("utf-8")
+    key = _derive_encryption_key(fingerprint)
+    nonce = secrets.token_bytes(12)
+    aesgcm = AESGCM(key)
+    ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+    return {
+        "version": 1,
+        "nonce": base64.b64encode(nonce).decode("ascii"),
+        "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+        "fingerprint_hash": _fingerprint_marker(fingerprint),
+    }
+
+
+def _decrypt_license_payload(payload: Dict[str, Any], fingerprint: str) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise LicenseTamperedError("Formato inesperado do ficheiro de licença.")
+
+    fingerprint_hash = payload.get("fingerprint_hash")
+    if fingerprint_hash and fingerprint_hash != _fingerprint_marker(fingerprint):
+        raise LicenseTamperedError("Impressão digital incompatível com o ficheiro de licença.")
+
+    try:
+        nonce = base64.b64decode(payload["nonce"])
+        ciphertext = base64.b64decode(payload["ciphertext"])
+    except Exception as exc:  # pragma: no cover - defensive
+        raise LicenseTamperedError("Não foi possível decodificar o ficheiro de licença.") from exc
+
+    aesgcm = AESGCM(_derive_encryption_key(fingerprint))
+    try:
+        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+    except Exception as exc:
+        raise LicenseTamperedError("Falha na verificação de integridade da licença.") from exc
+
+    try:
+        return json.loads(plaintext.decode("utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive
+        raise LicenseTamperedError("Conteúdo inválido no ficheiro de licença.") from exc
+
 def get_machine_fingerprint():
     # ... (O conteúdo desta função não muda)
     identifier = None
@@ -126,7 +216,8 @@ def get_machine_fingerprint():
 
 def validate_license_with_id(license_id, fingerprint):
     # ... (O conteúdo desta função não muda)
-    headers = {"Authorization": f"Bearer {PRODUCT_TOKEN}", "Accept": "application/vnd.api+json"}
+    token = get_product_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.api+json"}
     try:
         response = requests.post(f"{API_BASE_URL}/licenses/{license_id}/actions/validate", params={"fingerprint": fingerprint}, headers=headers)
         return response.json()
@@ -148,7 +239,8 @@ def activate_new_license(license_key, fingerprint):
 
     activation_payload = {"data": {"type": "machines", "attributes": {"fingerprint": fingerprint}, "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}}}}
     try:
-        r = requests.post(f"{API_BASE_URL}/machines", json=activation_payload, headers={"Authorization": f"Bearer {PRODUCT_TOKEN}", **headers})
+        token = get_product_token()
+        r = requests.post(f"{API_BASE_URL}/machines", json=activation_payload, headers={"Authorization": f"Bearer {token}", **headers})
         r.raise_for_status()
         return validation_data, "Ativação bem-sucedida."
     except requests.exceptions.RequestException as e:
@@ -156,27 +248,47 @@ def activate_new_license(license_key, fingerprint):
             return validation_data, "Máquina já estava ativada."
         return None, "Não foi possível ativar esta máquina. A licença pode estar em uso."
 
-def save_license_data(license_data):
+def save_license_data(license_data, fingerprint: Optional[str] = None):
     # ... (O conteúdo desta função não muda)
+    fingerprint = fingerprint or get_machine_fingerprint()
+    encrypted_payload = _encrypt_license_payload(license_data, fingerprint)
     try:
         with open(LICENSE_FILE_PATH, "w", encoding='utf-8') as f:
-            json.dump(license_data, f, indent=2)
+            json.dump(encrypted_payload, f, indent=2)
     except Exception:
         messagebox.showerror("Erro ao Guardar", f"Não foi possível guardar o ficheiro de licença em:\n{LICENSE_FILE_PATH}")
 
-def load_license_data():
+
+def load_license_data(fingerprint: Optional[str] = None):
     # ... (O conteúdo desta função não muda)
+    fingerprint = fingerprint or get_machine_fingerprint()
     if os.path.exists(LICENSE_FILE_PATH):
         try:
             with open(LICENSE_FILE_PATH, "r", encoding='utf-8') as f:
-                return json.load(f)
-        except Exception: return None
+                encrypted_payload: Dict[str, Any] = json.load(f)
+            return _decrypt_license_payload(encrypted_payload, fingerprint)
+        except LicenseTamperedError:
+            try:
+                os.remove(LICENSE_FILE_PATH)
+            except OSError:
+                logger.warning("Não foi possível remover um ficheiro de licença corrompido em %s.", LICENSE_FILE_PATH)
+            raise
+        except Exception:
+            return None
     return None
 
 def check_license(parent_window): # MODIFICADO: Recebe a janela pai
     """Função principal que gere o fluxo de verificação de licença."""
     fingerprint = get_machine_fingerprint()
-    stored_data = load_license_data()
+    try:
+        stored_data = load_license_data(fingerprint)
+    except LicenseTamperedError:
+        messagebox.showwarning(
+            "Licença inválida",
+            "Os dados de licença guardados não passaram na verificação de integridade e serão ignorados.",
+            parent=parent_window,
+        )
+        stored_data = None
 
     if stored_data:
         license_id = stored_data.get("data", {}).get("id")
@@ -199,7 +311,7 @@ def check_license(parent_window): # MODIFICADO: Recebe a janela pai
         activation_data, message = activate_new_license(license_key_input, fingerprint)
         if activation_data:
             messagebox.showinfo("Sucesso", "A sua licença foi ativada com sucesso nesta máquina!", parent=parent_window)
-            save_license_data(activation_data)
+            save_license_data(activation_data, fingerprint)
             return True, activation_data
         else:
             if not messagebox.askretrycancel("Falha na Ativação", f"{message}\nDeseja tentar novamente?", parent=parent_window):

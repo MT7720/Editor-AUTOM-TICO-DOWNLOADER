@@ -4,3 +4,4 @@ Pillow
 deep-translator
 yt-dlp
 pyvirtualdisplay
+cryptography

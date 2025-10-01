@@ -14,6 +14,10 @@ python main.py
 
 Depois de validada, a aplicação continua a verificar periodicamente o status da licença junto ao Keygen utilizando o identificador salvo no ficheiro `license.json`. Em caso de falha de rede temporária, o processo regista o erro nos logs e aguarda um intervalo crescente (exponencial) antes de repetir a verificação, evitando encerramentos acidentais. Caso o servidor informe que a licença expirou ou se tornou inválida, o utilizador é avisado e o programa termina imediatamente para impedir o uso não autorizado.
 
+O token do produto utilizado para contactar a API da Keygen **não** está mais presente no código-fonte. Durante o build (ou execução em desenvolvimento), defina a variável de ambiente `KEYGEN_PRODUCT_TOKEN` ou forneça um caminho através de `KEYGEN_PRODUCT_TOKEN_FILE` apontando para um ficheiro seguro contendo o token. Os pipelines de CI/CD devem injectar esse segredo antes de executar os testes ou distribuir os binários.
+
+O ficheiro `license.json` armazenado no diretório de dados da aplicação é agora cifrado com AES-GCM usando uma chave derivada do _fingerprint_ da máquina. Cada payload inclui um _hash_ autenticado; qualquer tentativa de adulteração resulta na eliminação do ficheiro e na necessidade de reativação manual da licença.
+
 ## Organização das abas do editor
 
 - **Editor: Vídeo** – ajuste a resolução, codec, comportamento do slideshow e configure o encerramento (fade out) que escurece a imagem enquanto reduz o áudio.

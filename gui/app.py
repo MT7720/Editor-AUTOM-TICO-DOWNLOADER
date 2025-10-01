@@ -98,7 +98,17 @@ class VideoEditorApp:
         self.log_file_path = configure_file_logging()
         logger.info("Iniciando aplicativo.")
         self.config = ConfigManager.load_config()
-        self.license_data = license_data or license_checker.load_license_data()
+        if license_data is not None:
+            self.license_data = license_data
+        else:
+            try:
+                self.license_data = license_checker.load_license_data()
+            except license_checker.LicenseTamperedError:
+                Messagebox.show_warning(
+                    "Licença inválida",
+                    "Os dados de licença guardados foram adulterados e precisarão de reativação.",
+                )
+                self.license_data = None
         self._license_id = self._extract_license_id(self.license_data)
         self._license_fingerprint = None
         self._license_check_job = None
