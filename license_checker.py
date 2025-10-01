@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 ACCOUNT_ID = "9798e344-f107-4cfd-bc83-af9b8e75d352"
 PRODUCT_TOKEN_ENV_VAR = "KEYGEN_PRODUCT_TOKEN"
 PRODUCT_TOKEN_FILE_ENV_VAR = "KEYGEN_PRODUCT_TOKEN_FILE"
+PRODUCT_TOKEN_RESOURCE = "security/product_token.dat"
 API_BASE_URL = f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
 ICON_FILE = resource_path("icone.ico")
 REQUEST_TIMEOUT = 10
@@ -235,6 +236,21 @@ def get_product_token() -> str:
     secret_file = os.getenv(PRODUCT_TOKEN_FILE_ENV_VAR)
     if secret_file:
         file_token = _load_secret_from_file(secret_file)
+        if file_token:
+            return file_token
+
+    resource_token = _load_secret_from_file(resource_path(PRODUCT_TOKEN_RESOURCE))
+    if resource_token:
+        return resource_token
+
+    executable_dir = os.path.dirname(sys.executable)
+    executable_candidates = [
+        os.path.join(executable_dir, "security", "product_token.dat"),
+        os.path.join(executable_dir, "product_token.dat"),
+    ]
+
+    for candidate in executable_candidates:
+        file_token = _load_secret_from_file(candidate)
         if file_token:
             return file_token
 
@@ -551,6 +567,20 @@ def load_license_data(fingerprint: Optional[str] = None):
 
 def check_license(parent_window): # MODIFICADO: Recebe a janela pai
     """Função principal que gere o fluxo de verificação de licença."""
+    try:
+        get_product_token()
+    except RuntimeError as exc:
+        messagebox.showerror(
+            "Token de produto indisponível",
+            (
+                f"{exc}\n\n"
+                "Reinstale a aplicação para restaurar os ficheiros necessários "
+                "ou contacte o suporte técnico para assistência."
+            ),
+            parent=parent_window,
+        )
+        return False, None
+
     fingerprint = get_machine_fingerprint()
     try:
         stored_data = load_license_data(fingerprint)
