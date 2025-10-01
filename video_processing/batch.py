@@ -36,6 +36,23 @@ __all__ = [
 ]
 
 
+def _apply_tail_extension(base_duration: float, params: Dict[str, Any]) -> float:
+    try:
+        duration = max(0.0, float(base_duration))
+    except (TypeError, ValueError):
+        duration = 0.0
+
+    if not params.get('add_fade_out'):
+        return duration
+
+    try:
+        tail = max(0.0, float(params.get('fade_out_duration', 10)))
+    except (TypeError, ValueError):
+        tail = 0.0
+
+    return duration + tail
+
+
 def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, cancel_event: threading.Event, temp_dir: str) -> bool:
     if cancel_event.is_set():
         return False
@@ -128,9 +145,10 @@ def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, c
         if available_music_files:
             narration_full_path = os.path.join(audio_folder, audio_filename)
             narration_props = _probe_media_properties(narration_full_path, params['ffmpeg_path'])
-            target_duration = float(narration_props['format']['duration']) if narration_props else 0
-            if params.get('add_fade_out'):
-                target_duration += params.get('fade_out_duration', 10)
+            target_duration = _apply_tail_extension(
+                narration_props['format']['duration'] if narration_props and narration_props.get('format') else 0,
+                params,
+            )
 
             music_playlist = _get_music_playlist(available_music_files, target_duration, params, params['ffmpeg_path'])
             if len(music_playlist) > 1:
@@ -224,9 +242,7 @@ def _run_batch_image_processing(params: Dict[str, Any], progress_queue: Queue, c
             progress_queue.put(("status", f"[{log_prefix}] Erro: Não foi possível ler duração de '{audio_filename}'. Pulando.", "error"))
             continue
 
-        final_duration = float(narration_props['format']['duration'])
-        if params.get('add_fade_out'):
-            final_duration += params.get('fade_out_duration', 10)
+        final_duration = _apply_tail_extension(narration_props['format']['duration'], params)
 
         images_for_this_video = all_images.copy()
         random.shuffle(images_for_this_video)
@@ -355,7 +371,7 @@ def _run_batch_mixed_processing(params: Dict[str, Any], progress_queue: Queue, c
         if images:
             progress_queue.put(("status", f"[{log_prefix_main}] Gerando slideshow a partir das imagens...", "info"))
             img_duration = params.get('image_duration', 5)
-            slideshow_duration = (len(images) * img_duration)
+            slideshow_duration = _apply_tail_extension(len(images) * img_duration, params)
             slideshow_temp_dir = tempfile.mkdtemp(prefix="kyle-slideshow-", dir=base_video_creation_temp_dir)
 
             slideshow_mp4_path, success = _process_images_in_chunks(params, images, slideshow_duration, slideshow_temp_dir, progress_queue, cancel_event, f"{log_prefix_main} (Slideshow)")
@@ -419,9 +435,10 @@ def _run_batch_mixed_processing(params: Dict[str, Any], progress_queue: Queue, c
         music_files_for_pass: List[str] = []
         if available_music_files:
             narration_props = _probe_media_properties(narration_path, params['ffmpeg_path'])
-            target_duration = float(narration_props['format']['duration']) if narration_props else 0
-            if params.get('add_fade_out'):
-                target_duration += params.get('fade_out_duration', 10)
+            target_duration = _apply_tail_extension(
+                narration_props['format']['duration'] if narration_props and narration_props.get('format') else 0,
+                params,
+            )
 
             music_playlist = _get_music_playlist(available_music_files, target_duration, params, params['ffmpeg_path'])
             if len(music_playlist) > 1:
@@ -546,9 +563,7 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
             progress_queue.put(("status", f"[{log_prefix}] Erro: Não foi possível ler duração de '{audio_filepath.name}'. Pulando.", "error"))
             continue
 
-        final_duration = float(narration_props['format']['duration'])
-        if params.get('add_fade_out'):
-            final_duration += params.get('fade_out_duration', 10)
+        final_duration = _apply_tail_extension(narration_props['format']['duration'], params)
 
         item_temp_dir = tempfile.mkdtemp(prefix=f"kyle-h-batch-item-{i}-", dir=temp_dir)
         if use_video_assets:

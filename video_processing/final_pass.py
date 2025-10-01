@@ -37,19 +37,36 @@ def _perform_final_pass(
         progress_queue.put(("status", f"[{log_prefix}] Erro Interno: Arquivo de vídeo base não foi encontrado.", "error"))
         return False
 
-    content_duration = 0
+    narration_duration = 0.0
     narration_props = _probe_media_properties(narration_path, params['ffmpeg_path']) if narration_path and os.path.isfile(narration_path) else None
     if narration_props and 'format' in narration_props and 'duration' in narration_props['format']:
-        content_duration = float(narration_props['format']['duration'])
-    else:
-        video_props = _probe_media_properties(base_video_path, params['ffmpeg_path'])
-        if video_props and 'format' in video_props:
-            content_duration = float(video_props['format']['duration'])
+        try:
+            narration_duration = float(narration_props['format']['duration'])
+        except (TypeError, ValueError):
+            narration_duration = 0.0
+
+    base_video_duration = 0.0
+    video_props = _probe_media_properties(base_video_path, params['ffmpeg_path'])
+    if video_props and 'format' in video_props and 'duration' in video_props['format']:
+        try:
+            base_video_duration = float(video_props['format']['duration'])
+        except (TypeError, ValueError):
+            base_video_duration = 0.0
+
+    content_duration = max(narration_duration, base_video_duration, 0.0)
     if content_duration <= 0:
         progress_queue.put(("status", f"[{log_prefix}] AVISO: Não foi possível determinar a duração do conteúdo.", "warning"))
-        content_duration = 1
+        content_duration = 1.0
 
-    total_duration = content_duration or 0
+    fade_tail_duration = 0.0
+    if params.get('add_fade_out'):
+        try:
+            fade_tail_duration = max(0.0, float(params.get('fade_out_duration', 10)))
+        except (TypeError, ValueError):
+            fade_tail_duration = 0.0
+
+    narration_with_tail = narration_duration + fade_tail_duration if narration_duration > 0 else 0.0
+    total_duration = max(content_duration, narration_with_tail)
 
     inputs: List[str] = []
     filter_complex_parts: List[str] = []
@@ -153,8 +170,13 @@ def _perform_final_pass(
         last_video_stream = "[v_png]"
 
     if params.get('add_fade_out'):
-        fade_duration = params.get('fade_out_duration', 10)
-        fade_start_time = max(0, content_duration - fade_duration)
+        fade_duration = max(0.0, float(params.get('fade_out_duration', 10)))
+        fade_start_time = narration_duration if narration_duration > 0 else max(0.0, content_duration - fade_duration)
+        progress_queue.put((
+            "status",
+            f"[{log_prefix}] Fade-out configurado para iniciar em {fade_start_time:.2f}s após narração de {narration_duration:.2f}s; vídeo visível até {total_duration:.2f}s.",
+            "info",
+        ))
         filter_complex_parts.append(f"{last_video_stream}fade=t=out:st={fade_start_time}:d={fade_duration}:c=black[v_fadeout]")
         last_video_stream = "[v_fadeout]"
 
@@ -189,8 +211,8 @@ def _perform_final_pass(
         last_audio_stream = "[aout]"
 
     if params.get('add_fade_out') and last_audio_stream:
-        fade_duration = params.get('fade_out_duration', 10)
-        fade_start_time = max(0, content_duration - fade_duration)
+        fade_duration = max(0.0, float(params.get('fade_out_duration', 10)))
+        fade_start_time = narration_duration if narration_duration > 0 else max(0.0, content_duration - fade_duration)
         filter_complex_parts.append(f"{last_audio_stream}afade=t=out:st={fade_start_time}:d={fade_duration}[a_fadeout]")
         last_audio_stream = "[a_fadeout]"
 
