@@ -21,8 +21,8 @@ MANIFEST: Dict[str, object] = {
     "resources": {
         "license_checker.py": {
             "path": "license_checker.py",
-            "hash": "d8731aa591ebf4b432ba39de16da43e56174e5eb4128c1c3edda51d5d2408be1",
-            "signature": "840e578f25e420fc0e40cd711a1a449089834f13443fb68b15bda32308c9e427",
+            "hash": "93787fdb53c6a665fef32e901aea948d1493995afc40db369d8aee79daafd2bd",
+            "signature": "158289e66b06fcbfb8c7d2a4e69086d6a8ecc262f2171ebbc27f95c56201457a",
             "normalize_newlines": True,
         },
         "video_processing_logic.py": {
