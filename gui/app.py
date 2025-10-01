@@ -33,6 +33,11 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
 from ttkbootstrap.tooltip import ToolTip
 
+try:
+    import video_processing_logic  # type: ignore
+except ImportError:  # pragma: no cover - fallback assignment
+    video_processing_logic = None  # type: ignore[assignment]
+
 from .config_manager import ConfigManager
 from .constants import (
     APP_DATA_PATH,
