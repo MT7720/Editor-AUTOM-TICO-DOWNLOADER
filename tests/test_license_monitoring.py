@@ -36,6 +36,7 @@ def license_app(monkeypatch):
     app._license_check_job = None
     app._license_check_failures = 0
     app._license_termination_initiated = False
+    app.license_data = {"meta": {"key": "stored-key"}}
 
     yield app, root.after_calls
 
@@ -43,10 +44,11 @@ def license_app(monkeypatch):
 def test_periodic_license_validation_success(monkeypatch, license_app):
     app, after_calls = license_app
 
-    def fake_validate(license_id, fingerprint):
+    def fake_validate(license_id, fingerprint, license_key):
         assert license_id == "test-id"
         assert fingerprint == "fingerprint"
-        return {"meta": {"valid": True}}
+        assert license_key == "stored-key"
+        return {"meta": {"valid": True}}, None
 
     monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
 
@@ -61,7 +63,11 @@ def test_license_validation_network_backoff(monkeypatch, license_app):
     app, after_calls = license_app
     after_calls.clear()
 
-    monkeypatch.setattr(license_checker, "validate_license_with_id", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        license_checker,
+        "validate_license_with_id",
+        lambda *args, **kwargs: (None, "network-error"),
+    )
 
     app._run_license_check()
 
@@ -81,7 +87,7 @@ def test_license_validation_invalid_triggers_exit(monkeypatch, license_app):
     monkeypatch.setattr(
         license_checker,
         "validate_license_with_id",
-        lambda *args, **kwargs: {"meta": {"valid": False, "detail": "Expirada"}},
+        lambda *args, **kwargs: ({"meta": {"valid": False, "detail": "Expirada"}}, None),
     )
 
     warnings = {}
@@ -106,3 +112,25 @@ def test_license_validation_invalid_triggers_exit(monkeypatch, license_app):
     assert warnings["message"] == "Expirada"
     assert warnings["title"] == "Licença inválida"
     assert destroyed["called"] is True
+
+
+def test_license_validation_authentication_failure(monkeypatch, license_app):
+    app, after_calls = license_app
+    after_calls.clear()
+    app.license_data = None
+
+    def fake_validate(license_id, fingerprint, license_key):
+        assert license_key is None
+        return None, "auth-error"
+
+    monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
+
+    app._run_license_check()
+
+    assert app._license_check_failures == 1
+    assert after_calls
+    expected_delay = min(
+        app.LICENSE_CHECK_INTERVAL_MS * (2 ** app._license_check_failures),
+        app.LICENSE_CHECK_MAX_INTERVAL_MS,
+    )
+    assert after_calls[-1][0] == expected_delay
