@@ -37,12 +37,12 @@
   "presenter_scale": 0.8,
   "presenter_chroma_enabled": true,
   "presenter_chroma_color": "#00FF00",
-  "presenter_chroma_similarity": 0.15754807692307693,
+  "presenter_chroma_similarity": 0.20296610169491527,
   "presenter_chroma_blend": 0.7355769230769231,
   "show_tech_logs": false,
-  "intro_enabled": false,
-  "intro_default_text": "",
-  "intro_texts": {},
+  "intro_enabled": true,
+  "intro_default_text": "Olá, tudo bem?",
   "intro_language_code": "auto",
+  "intro_texts": {},
   "single_language_code": "auto"
 }
