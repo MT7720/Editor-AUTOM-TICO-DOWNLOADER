@@ -38,7 +38,7 @@ def _gather_music_paths(entry: Dict[str, str]) -> List[str]:
 def _process_single_video(params: Dict, temp_dir: str, progress_queue: Queue, cancel_event: threading.Event) -> bool:
     base_video = params.get('media_path_single')
     if not (base_video and os.path.isfile(base_video)):
-        progress_queue.put(("status", "[process_entrypoint] Vídeo base inválido.", "error"))
+        progress_queue.put(("status", "[process_entrypoint] Arquivo de Vídeo Base inválido.", "error"))
         return False
 
     narration_path = params.get('narration_file_single') if os.path.isfile(params.get('narration_file_single', '')) else None
@@ -52,7 +52,7 @@ def _process_single_video(params: Dict, temp_dir: str, progress_queue: Queue, ca
 def _process_single_slideshow(params: Dict, temp_dir: str, progress_queue: Queue, cancel_event: threading.Event) -> bool:
     image_folder = params.get('media_path_single')
     if not (image_folder and os.path.isdir(image_folder)):
-        progress_queue.put(("status", "[process_entrypoint] Pasta de imagens inválida.", "error"))
+        progress_queue.put(("status", "[process_entrypoint] Pasta de Imagens (Slideshow) inválida.", "error"))
         return False
 
     supported = {'.png', '.jpg', '.jpeg', '.bmp', '.webp'}
