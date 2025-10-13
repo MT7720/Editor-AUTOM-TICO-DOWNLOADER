@@ -40,6 +40,8 @@ try:
 except ImportError:  # pragma: no cover - fallback assignment
     video_processing_logic = None  # type: ignore[assignment]
 
+from processing.typing_renderer import INTRO_FONT_CHOICES
+
 from .config_manager import ConfigManager
 from .constants import (
     APP_DATA_PATH,
@@ -673,10 +675,33 @@ class VideoEditorApp:
         self.intro_language_combobox.bind("<<ComboboxSelected>>", lambda event: self._on_intro_language_selected())
         ttk.Label(settings_box, text="Quando automático, cada vídeo usa o texto configurado para o idioma detectado.", bootstyle="secondary", wraplength=760).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        ttk.Label(settings_box, text="4) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        ttk.Label(settings_box, text="4) Fonte e estilo do texto da introdução:").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        font_frame = ttk.Frame(settings_box)
+        font_frame.grid(row=5, column=0, columnspan=2, sticky="ew")
+        font_frame.columnconfigure(1, weight=1)
+        self.intro_font_choices = list(INTRO_FONT_CHOICES.keys())
+        if self.intro_font_choice_var.get() not in INTRO_FONT_CHOICES:
+            self.intro_font_choice_var.set(self.intro_font_choices[0])
+        ttk.Label(font_frame, text="Fonte:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        self.intro_font_combobox = ttk.Combobox(
+            font_frame,
+            textvariable=self.intro_font_choice_var,
+            state="readonly",
+            values=self.intro_font_choices,
+        )
+        self.intro_font_combobox.grid(row=0, column=1, sticky="ew")
+        self.intro_font_bold_check = ttk.Checkbutton(
+            font_frame,
+            text="Negrito",
+            variable=self.intro_font_bold_var,
+            bootstyle="round-toggle",
+        )
+        self.intro_font_bold_check.grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        ttk.Label(settings_box, text="5) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=6, column=0, columnspan=2, sticky="w", pady=(12, 5))
         self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=6, wrap="word")
-        self.intro_default_text_widget.grid(row=5, column=0, columnspan=2, sticky="ew")
-        settings_box.rowconfigure(5, weight=1)
+        self.intro_default_text_widget.grid(row=7, column=0, columnspan=2, sticky="ew")
+        settings_box.rowconfigure(7, weight=1)
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
         tab.rowconfigure(2, weight=1)
         self._set_intro_language_display_from_code(self.intro_language_var.get())
@@ -705,6 +730,10 @@ class VideoEditorApp:
             self.intro_language_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_default_text_widget'):
             self.intro_default_text_widget.configure(state=state)
+        if hasattr(self, 'intro_font_combobox'):
+            self.intro_font_combobox.configure(state="readonly" if enabled else DISABLED)
+        if hasattr(self, 'intro_font_bold_check'):
+            self.intro_font_bold_check.configure(state=state)
 
     def _collect_intro_texts(self) -> Dict[str, str]:
         return {}
@@ -1850,6 +1879,8 @@ class VideoEditorApp:
             'intro_language_code': self.intro_language_var.get(),
             'intro_texts': self._collect_intro_texts(),
             'single_language_code': self.single_language_code_var.get(),
+            'intro_font_choice': self.intro_font_choice_var.get(),
+            'intro_font_bold': self.intro_font_bold_var.get(),
         }
         ConfigManager.save_config(config_to_save)
         logger.info("Configuração guardada.")

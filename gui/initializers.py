@@ -20,6 +20,7 @@ from .constants import (
     SLIDESHOW_TRANSITIONS,
     SUBTITLE_POSITIONS,
 )
+from processing.typing_renderer import DEFAULT_INTRO_FONT_CHOICE, INTRO_FONT_CHOICES
 
 
 def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
@@ -82,6 +83,11 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
     app.intro_enabled_var = ttk.BooleanVar(value=config.get("intro_enabled", False))
     app.intro_default_text_var = ttk.StringVar(value=config.get("intro_default_text", ""))
     app.intro_language_var = ttk.StringVar(value=config.get("intro_language_code", "auto"))
+    stored_intro_font_choice = config.get("intro_font_choice", DEFAULT_INTRO_FONT_CHOICE)
+    if stored_intro_font_choice not in INTRO_FONT_CHOICES:
+        stored_intro_font_choice = DEFAULT_INTRO_FONT_CHOICE
+    app.intro_font_choice_var = ttk.StringVar(value=stored_intro_font_choice)
+    app.intro_font_bold_var = ttk.BooleanVar(value=bool(config.get("intro_font_bold", False)))
 
     stored_language_code = config.get("single_language_code", "auto") or "auto"
     if isinstance(stored_language_code, str) and stored_language_code.lower() != "auto":

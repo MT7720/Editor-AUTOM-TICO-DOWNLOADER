@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+from processing.typing_renderer import DEFAULT_INTRO_FONT_CHOICE
+
 from .constants import (
     CONFIG_FILE,
     EFFECT_BLEND_MODES,
@@ -75,6 +77,8 @@ class ConfigManager:
             "intro_texts": {},
             "intro_language_code": "auto",
             "single_language_code": "auto",
+            "intro_font_choice": DEFAULT_INTRO_FONT_CHOICE,
+            "intro_font_bold": False,
         }
         try:
             if os.path.exists(CONFIG_FILE):

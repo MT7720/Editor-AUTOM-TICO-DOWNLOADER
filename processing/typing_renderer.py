@@ -8,17 +8,29 @@ import tempfile
 import threading
 import wave
 from array import array
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
 from .ffmpeg_pipeline import execute_ffmpeg
 
 __all__ = [
+    "INTRO_FONT_CHOICES",
+    "DEFAULT_INTRO_FONT_CHOICE",
     "wrap_text_to_width",
     "generate_typing_audio",
     "create_typing_intro_clip",
 ]
+
+
+INTRO_FONT_CHOICES: Dict[str, Optional[Dict[str, str]]] = {
+    "Automático (usar fonte das legendas)": None,
+    "DejaVu Sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
+    "DejaVu Serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
+    "DejaVu Sans Mono": {"regular": "DejaVuSansMono.ttf", "bold": "DejaVuSansMono-Bold.ttf"},
+}
+
+DEFAULT_INTRO_FONT_CHOICE = next(iter(INTRO_FONT_CHOICES))
 
 
 def wrap_text_to_width(text: str, font: ImageFont.ImageFont, max_width: int) -> List[str]:
@@ -118,6 +130,90 @@ def generate_typing_audio(
     return len(data) / float(sample_rate)
 
 
+def _select_intro_font(
+    font_choice: Optional[str],
+    bold: bool,
+    font_size: int,
+    subtitle_font_path: Optional[str],
+) -> Tuple[ImageFont.ImageFont, bool]:
+    choice = font_choice if font_choice in INTRO_FONT_CHOICES else DEFAULT_INTRO_FONT_CHOICE
+    entry = INTRO_FONT_CHOICES.get(choice)
+
+    candidates: List[Tuple[str, bool]] = []
+    seen: Set[Tuple[str, bool]] = set()
+
+    def add_candidate(path: Optional[str], allow_fake_bold: bool) -> None:
+        if not path:
+            return
+        candidate = (path, allow_fake_bold)
+        if candidate in seen:
+            return
+        seen.add(candidate)
+        candidates.append(candidate)
+
+    if entry is None:
+        if subtitle_font_path:
+            add_candidate(subtitle_font_path, False)
+            if bold:
+                add_candidate(subtitle_font_path, True)
+    elif isinstance(entry, dict):
+        regular_path = entry.get("regular")
+        bold_path = entry.get("bold")
+        if bold:
+            if bold_path:
+                add_candidate(bold_path, False)
+            if regular_path:
+                add_candidate(regular_path, True)
+        else:
+            if regular_path:
+                add_candidate(regular_path, False)
+            if bold_path:
+                add_candidate(bold_path, False)
+    else:
+        add_candidate(entry, bold)
+
+    if subtitle_font_path:
+        add_candidate(subtitle_font_path, False)
+        if bold:
+            add_candidate(subtitle_font_path, True)
+
+    add_candidate("arial.ttf", bold)
+    if bold:
+        add_candidate("DejaVuSans-Bold.ttf", False)
+    add_candidate("DejaVuSans.ttf", bold)
+
+    for path, allow_fake_bold in candidates:
+        try:
+            font = ImageFont.truetype(path, font_size)
+        except (OSError, FileNotFoundError):
+            continue
+
+        if bold:
+            if allow_fake_bold:
+                try:
+                    variant = font.font_variant(weight="bold")
+                except Exception:
+                    variant = None
+                if variant:
+                    return variant, False
+                return font, True
+            return font, False
+
+        return font, False
+
+    font = ImageFont.load_default()
+    if bold:
+        try:
+            variant = font.font_variant(weight="bold")
+        except Exception:
+            variant = None
+        if variant:
+            return variant, False
+        return font, True
+
+    return font, False
+
+
 def create_typing_intro_clip(
     text: str,
     resolution: Tuple[int, int],
@@ -143,24 +239,12 @@ def create_typing_intro_clip(
     os.makedirs(frames_dir, exist_ok=True)
 
     font_size = max(36, int(height * 0.08))
-    font_candidates: List[Optional[str]] = []
     subtitle_style = params.get("subtitle_style") or {}
     subtitle_font_path = subtitle_style.get("font_file") if isinstance(subtitle_style, dict) else None
-    if subtitle_font_path:
-        font_candidates.append(subtitle_font_path)
-    font_candidates.extend(["arial.ttf", "DejaVuSans.ttf"])
-
-    font: ImageFont.ImageFont
-    for candidate in font_candidates:
-        if not candidate:
-            continue
-        try:
-            font = ImageFont.truetype(candidate, font_size)
-            break
-        except (OSError, FileNotFoundError):
-            continue
-    else:
-        font = ImageFont.load_default()
+    font_choice = params.get("intro_font_choice")
+    font_bold = bool(params.get("intro_font_bold"))
+    font, use_fake_bold = _select_intro_font(font_choice, font_bold, font_size, subtitle_font_path)
+    draw_offsets = [(0, 0)] if not (font_bold and use_fake_bold) else [(0, 0), (1, 0), (0, 1), (1, 1)]
 
     max_text_width = int(width * 0.8)
 
@@ -183,7 +267,8 @@ def create_typing_intro_clip(
             line_width = bbox[2] - bbox[0]
             x_cursor = max(0, (width - line_width) // 2)
             if line:
-                draw.text((x_cursor, y_cursor), line, font=font, fill=(255, 255, 255))
+                for dx, dy in draw_offsets:
+                    draw.text((x_cursor + dx, y_cursor + dy), line, font=font, fill=(255, 255, 255))
             y_cursor += line_heights[idx] + line_gap
 
         return img
