@@ -25,7 +25,12 @@ def test_create_typing_intro_clip_smoke(tmp_path, monkeypatch):
 
     monkeypatch.setattr(typing_renderer, "execute_ffmpeg", fake_execute)
 
-    params = {"ffmpeg_path": "ffmpeg", "subtitle_style": {}}
+    params = {
+        "ffmpeg_path": "ffmpeg",
+        "subtitle_style": {},
+        "intro_font_choice": "Arial",
+        "intro_font_bold": True,
+    }
     cancel_event = threading.Event()
     progress_queue: Queue = Queue()
 

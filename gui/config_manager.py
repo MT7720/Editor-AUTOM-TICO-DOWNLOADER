@@ -16,6 +16,7 @@ from .constants import (
     SLIDESHOW_MOTIONS,
     SLIDESHOW_TRANSITIONS,
     SUBTITLE_POSITIONS,
+    INTRO_FONT_CHOICES,
 )
 from .utils import logger
 
@@ -74,6 +75,8 @@ class ConfigManager:
             "intro_default_text": "",
             "intro_texts": {},
             "intro_language_code": "auto",
+            "intro_font_choice": INTRO_FONT_CHOICES[0] if INTRO_FONT_CHOICES else "Automático",
+            "intro_font_bold": False,
             "single_language_code": "auto",
             "banner_enabled": False,
             "banner_default_text": "",

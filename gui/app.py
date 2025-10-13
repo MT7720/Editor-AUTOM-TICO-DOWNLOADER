@@ -62,6 +62,7 @@ from .constants import (
     SUPPORTED_PRESENTER_FT,
     SUPPORTED_SUBTITLE_FT,
     SUPPORTED_VIDEO_FT,
+    INTRO_FONT_CHOICES,
 )
 from .ffmpeg_manager import FFmpegManager
 from .initializers import initialize_state, initialize_variables
@@ -626,6 +627,7 @@ class VideoEditorApp:
         helper_text = (
             "• Ligue a introdução digitada para gerar um pequeno clipe com o texto antes do conteúdo.\n"
             "• Escreva o texto uma única vez e nós traduziremos automaticamente para o idioma do vídeo.\n"
+            "• Personalize a fonte e o negrito para combinar com a identidade visual desejada.\n"
             "• Ajuste o idioma preferido apenas se precisar forçar um idioma específico."
         )
         ttk.Label(helper_box, text=helper_text, justify=LEFT, wraplength=780).grid(row=0, column=0, sticky="w")
@@ -674,10 +676,34 @@ class VideoEditorApp:
         self.intro_language_combobox.bind("<<ComboboxSelected>>", lambda event: self._on_intro_language_selected())
         ttk.Label(settings_box, text="Quando automático, cada vídeo usa o texto configurado para o idioma detectado.", bootstyle="secondary", wraplength=760).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        ttk.Label(settings_box, text="4) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        ttk.Label(settings_box, text="4) Personalize a tipografia da introdução:").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+
+        intro_font_frame = ttk.Frame(settings_box)
+        intro_font_frame.grid(row=5, column=0, columnspan=2, sticky="ew")
+        intro_font_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(intro_font_frame, text="Fonte:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        self.intro_font_choice_combobox = ttk.Combobox(
+            intro_font_frame,
+            textvariable=self.intro_font_choice_var,
+            state="readonly",
+            values=INTRO_FONT_CHOICES,
+        )
+        self.intro_font_choice_combobox.grid(row=0, column=1, sticky="ew")
+
+        self.intro_font_bold_check = ttk.Checkbutton(
+            intro_font_frame,
+            text="Negrito",
+            variable=self.intro_font_bold_var,
+            bootstyle="round-toggle",
+        )
+        self.intro_font_bold_check.grid(row=0, column=2, sticky="w", padx=(12, 0))
+        ToolTip(self.intro_font_bold_check, "Ativa letras mais encorpadas para destacar a introdução.")
+
+        ttk.Label(settings_box, text="5) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=6, column=0, columnspan=2, sticky="w", pady=(12, 5))
         self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=6, wrap="word")
-        self.intro_default_text_widget.grid(row=5, column=0, columnspan=2, sticky="ew")
-        settings_box.rowconfigure(5, weight=1)
+        self.intro_default_text_widget.grid(row=7, column=0, columnspan=2, sticky="ew")
+        settings_box.rowconfigure(7, weight=1)
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
         tab.rowconfigure(2, weight=1)
         self._set_intro_language_display_from_code(self.intro_language_var.get())
@@ -705,6 +731,10 @@ class VideoEditorApp:
             self.single_language_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_language_combobox'):
             self.intro_language_combobox.configure(state="readonly" if enabled else DISABLED)
+        if hasattr(self, 'intro_font_choice_combobox'):
+            self.intro_font_choice_combobox.configure(state="readonly" if enabled else DISABLED)
+        if hasattr(self, 'intro_font_bold_check'):
+            self.intro_font_bold_check.configure(state=NORMAL if enabled else DISABLED)
         if hasattr(self, 'intro_default_text_widget'):
             self.intro_default_text_widget.configure(state=state)
 
@@ -1916,6 +1946,8 @@ class VideoEditorApp:
         params['intro_default_text'] = intro_default_text.strip()
         params['intro_language_code'] = self.intro_language_var.get()
         params['intro_texts'] = self._collect_intro_texts()
+        params['intro_font_choice'] = self.intro_font_choice_var.get()
+        params['intro_font_bold'] = self.intro_font_bold_var.get()
         self._store_current_banner_translation()
         banner_default_text = self.banner_default_text_var.get()
         if hasattr(self, 'banner_default_text_widget'):
@@ -2255,6 +2287,8 @@ class VideoEditorApp:
             'intro_default_text': intro_default_text,
             'intro_language_code': self.intro_language_var.get(),
             'intro_texts': self._collect_intro_texts(),
+            'intro_font_choice': self.intro_font_choice_var.get(),
+            'intro_font_bold': self.intro_font_bold_var.get(),
             'single_language_code': self.single_language_code_var.get(),
             'banner_enabled': self.banner_enabled_var.get(),
             'banner_default_text': banner_default_text,

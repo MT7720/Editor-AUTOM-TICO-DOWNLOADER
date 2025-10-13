@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFont
 
 from .ffmpeg_pipeline import execute_ffmpeg
+from shared import INTRO_FONT_REGISTRY, get_intro_font_candidates, resolve_intro_font_candidate_path
 
 __all__ = [
     "wrap_text_to_width",
@@ -143,24 +144,54 @@ def create_typing_intro_clip(
     os.makedirs(frames_dir, exist_ok=True)
 
     font_size = max(36, int(height * 0.08))
-    font_candidates: List[Optional[str]] = []
+    intro_font_choice = str(params.get("intro_font_choice") or "")
+    intro_font_bold = bool(params.get("intro_font_bold"))
+
     subtitle_style = params.get("subtitle_style") or {}
     subtitle_font_path = subtitle_style.get("font_file") if isinstance(subtitle_style, dict) else None
-    if subtitle_font_path:
-        font_candidates.append(subtitle_font_path)
-    font_candidates.extend(["arial.ttf", "DejaVuSans.ttf"])
 
-    font: ImageFont.ImageFont
-    for candidate in font_candidates:
+    preferred_candidates: List[str] = []
+    preferred_candidates.extend(get_intro_font_candidates(intro_font_choice, bold=intro_font_bold))
+    if intro_font_bold:
+        preferred_candidates.extend(get_intro_font_candidates(intro_font_choice, bold=False))
+    if subtitle_font_path:
+        preferred_candidates.append(str(subtitle_font_path))
+    preferred_candidates.extend(["DejaVuSans.ttf", "arial.ttf", "LiberationSans-Regular.ttf"])
+
+    deduped_candidates: List[str] = []
+    seen_candidates = set()
+    for candidate in preferred_candidates:
         if not candidate:
             continue
+        marker = candidate.lower()
+        if marker in seen_candidates:
+            continue
+        seen_candidates.add(marker)
+        deduped_candidates.append(candidate)
+
+    font: ImageFont.ImageFont
+    used_candidate_marker: Optional[str] = None
+    for candidate in deduped_candidates:
         try:
             font = ImageFont.truetype(candidate, font_size)
+            used_candidate_marker = candidate.lower()
             break
         except (OSError, FileNotFoundError):
             continue
     else:
         font = ImageFont.load_default()
+
+    bold_markers = set()
+    registry_entry = INTRO_FONT_REGISTRY.get(intro_font_choice or "")
+    if registry_entry:
+        for raw_candidate in registry_entry.get("bold", []):
+            resolved = resolve_intro_font_candidate_path(str(raw_candidate))
+            bold_markers.add(str(raw_candidate).lower())
+            bold_markers.add(resolved.lower())
+
+    bold_font_loaded = bool(used_candidate_marker and used_candidate_marker in bold_markers)
+    simulate_bold = bool(intro_font_bold and not bold_font_loaded)
+    stroke_width = 2 if simulate_bold else 0
 
     max_text_width = int(width * 0.8)
 
@@ -170,7 +201,7 @@ def create_typing_intro_clip(
         lines = wrap_text_to_width(current_text, font, max_text_width)
         line_heights: List[int] = []
         for line in lines:
-            bbox = draw.textbbox((0, 0), line or " ", font=font)
+            bbox = draw.textbbox((0, 0), line or " ", font=font, stroke_width=stroke_width)
             line_heights.append(bbox[3] - bbox[1])
 
         line_gap = max(10, int(font_size * 0.3))
@@ -179,11 +210,18 @@ def create_typing_intro_clip(
 
         y_cursor = start_y
         for idx, line in enumerate(lines):
-            bbox = draw.textbbox((0, 0), line or " ", font=font)
+            bbox = draw.textbbox((0, 0), line or " ", font=font, stroke_width=stroke_width)
             line_width = bbox[2] - bbox[0]
             x_cursor = max(0, (width - line_width) // 2)
             if line:
-                draw.text((x_cursor, y_cursor), line, font=font, fill=(255, 255, 255))
+                draw.text(
+                    (x_cursor, y_cursor),
+                    line,
+                    font=font,
+                    fill=(255, 255, 255),
+                    stroke_width=stroke_width,
+                    stroke_fill=(255, 255, 255),
+                )
             y_cursor += line_heights[idx] + line_gap
 
         return img

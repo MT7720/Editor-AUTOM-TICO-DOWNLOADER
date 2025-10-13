@@ -19,6 +19,7 @@ from .constants import (
     SLIDESHOW_MOTIONS,
     SLIDESHOW_TRANSITIONS,
     SUBTITLE_POSITIONS,
+    INTRO_FONT_CHOICES,
 )
 
 
@@ -82,6 +83,9 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
     app.intro_enabled_var = ttk.BooleanVar(value=config.get("intro_enabled", False))
     app.intro_default_text_var = ttk.StringVar(value=config.get("intro_default_text", ""))
     app.intro_language_var = ttk.StringVar(value=config.get("intro_language_code", "auto"))
+    default_intro_font = config.get("intro_font_choice") or (INTRO_FONT_CHOICES[0] if INTRO_FONT_CHOICES else "Automático")
+    app.intro_font_choice_var = ttk.StringVar(value=default_intro_font)
+    app.intro_font_bold_var = ttk.BooleanVar(value=config.get("intro_font_bold", False))
 
     app.banner_enabled_var = ttk.BooleanVar(value=config.get("banner_enabled", False))
     app.banner_default_text_var = ttk.StringVar(value=config.get("banner_default_text", ""))
