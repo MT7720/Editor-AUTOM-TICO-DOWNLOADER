@@ -270,22 +270,67 @@ class VideoEditorApp:
         mode_section.grid(row=0, column=0, sticky="ew", pady=(0, 15))
         mode_section_flow = ttk.Frame(mode_section)
         mode_section_flow.pack(fill=X, expand=True)
-        
+
+        self._mode_option_cards: Dict[str, ttk.Frame] = {}
+        self._mode_card_fonts_initialized = getattr(self, "_mode_card_fonts_initialized", False)
+        if not self._mode_card_fonts_initialized:
+            default_font = tkFont.nametofont("TkDefaultFont")
+            self._mode_title_font = default_font.copy()
+            self._mode_title_font.configure(weight="bold")
+            self._mode_description_font = default_font.copy()
+            self._mode_description_font.configure(size=max(default_font.cget("size") - 1, 9))
+            self._mode_card_fonts_initialized = True
+
         mode_options = [
-            ("Vídeo Único", "video_single", "Processa um único ficheiro de vídeo."),
-            ("Slideshow Único", "image_folder", "Cria um slideshow a partir de uma pasta de imagens."),
-            ("Lote de Vídeos", "batch_video", "Processa vários vídeos com narração e legendas opcionais."),
-            ("Lote de Imagens", "batch_image", "Gera múltiplos slideshows com base em pastas de imagens."),
-            ("Lote Misto", "batch_mixed", "Mistura vídeos e imagens num único lote."),
+            (
+                "Vídeo Único",
+                "video_single",
+                "Processa um único vídeo com possibilidade de adicionar narração e legendas personalizadas.",
+            ),
+            (
+                "Slideshow Único",
+                "image_folder",
+                "Constrói um slideshow elegante a partir de uma pasta de imagens seleccionada, com transições configuráveis.",
+            ),
+            (
+                "Lote de Vídeos",
+                "batch_video",
+                "Processa vários vídeos em sequência, reutilizando narrações e legendas partilhadas quando disponíveis.",
+            ),
+            (
+                "Lote de Imagens",
+                "batch_image",
+                "Gera múltiplos slideshows automaticamente, ideal para colecções de imagens organizadas por pasta.",
+            ),
+            (
+                "Lote Misto",
+                "batch_mixed",
+                "Combina vídeos e imagens num único lote de produção, garantindo alinhamento entre áudio e visuais.",
+            ),
             (
                 "Lote por Pasta Raiz",
                 "batch_image_hierarchical",
-                "Processa subpastas numeradas dentro de uma pasta raiz.",
+                "Percorre subpastas numeradas dentro de uma pasta raiz e cria um vídeo independente para cada uma.",
             ),
         ]
 
-        for text, value, tip in mode_options:
-            self._add_mode_option(mode_section_flow, text=text, value=value, tooltip=tip)
+        columns = 3
+        for index, (text, value, tip) in enumerate(mode_options):
+            self._add_mode_option(
+                mode_section_flow,
+                index=index,
+                columns=columns,
+                text=text,
+                value=value,
+                description=tip,
+            )
+
+        for col in range(columns):
+            mode_section_flow.grid_columnconfigure(col, weight=1)
+
+        if not hasattr(self.media_type, "_mode_card_trace"):
+            self.media_type._mode_card_trace = self.media_type.trace_add("write", lambda *_: self._refresh_mode_cards())
+        self._refresh_mode_cards()
 
         # --- Ficheiros de Entrada ---
         input_section = ttk.LabelFrame(tab, text=" Ficheiros de Entrada ", padding=15)
@@ -440,22 +485,69 @@ class VideoEditorApp:
         # --- Ações e Progresso (Grid row atualizado) ---
         self._create_editor_process_section(tab, 4)
 
-    def _add_mode_option(self, parent: ttk.Frame, *, text: str, value: str, tooltip: str) -> None:
-        container = ttk.Frame(parent)
-        container.pack(side=LEFT, padx=(0, 15))
+    def _add_mode_option(
+        self,
+        parent: ttk.Frame,
+        *,
+        index: int,
+        columns: int,
+        text: str,
+        value: str,
+        description: str,
+    ) -> None:
+        row, column = divmod(index, columns)
+        card = ttk.Frame(parent, padding=12, bootstyle="secondary")
+        card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
+        card.configure(borderwidth=1, relief="ridge")
+        card.columnconfigure(0, weight=1)
 
         radio = ttk.Radiobutton(
-            container,
+            card,
             text=text,
             variable=self.media_type,
             value=value,
-            command=self.update_ui_for_media_type,
+            command=self._on_mode_option_selected,
+            bootstyle="primary",
         )
-        radio.pack(side=LEFT)
+        radio.configure(style="ModeTitle.TRadiobutton")
+        radio.grid(row=0, column=0, sticky="w")
 
-        help_icon = ttk.Label(container, text="?", width=2, anchor="center")
-        help_icon.pack(side=LEFT, padx=(5, 0))
-        ToolTip(help_icon, tooltip)
+        description_label = ttk.Label(
+            card,
+            text=description,
+            wraplength=260,
+            justify="left",
+            style="ModeDescription.TLabel",
+        )
+        description_label.grid(row=1, column=0, sticky="w", pady=(6, 0))
+
+        def _select_mode(event=None, *, button=radio):
+            button.invoke()
+
+        card.bind("<Button-1>", _select_mode)
+        radio.bind("<Button-1>", lambda e: None)
+        description_label.bind("<Button-1>", _select_mode)
+
+        ToolTip(card, description)
+        ToolTip(description_label, description)
+
+        self._mode_option_cards[value] = card
+
+        style = ttk.Style()
+        style.configure("ModeTitle.TRadiobutton", font=self._mode_title_font)
+        style.configure("ModeDescription.TLabel", font=self._mode_description_font)
+
+    def _on_mode_option_selected(self):
+        self.update_ui_for_media_type()
+        self._refresh_mode_cards()
+
+    def _refresh_mode_cards(self):
+        current_mode = self.media_type.get()
+        for value, card in getattr(self, "_mode_option_cards", {}).items():
+            if value == current_mode:
+                card.configure(bootstyle="primary", borderwidth=2)
+            else:
+                card.configure(bootstyle="secondary", borderwidth=1)
 
     def _on_single_language_selected(self, event=None):
         display_value = self.single_language_display_var.get()
@@ -1112,7 +1204,7 @@ class VideoEditorApp:
         frame = ttk.Frame(parent)
         frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         frame.columnconfigure(1, weight=1)
-        ttk.Label(frame, text=label_text, width=25, anchor='w').grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Label(frame, text=label_text, anchor='w', justify='left').grid(row=0, column=0, sticky="w", padx=(0, 10))
         entry = ttk.Entry(frame, textvariable=self.path_vars[var_key], state="readonly")
         entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
         button_container = ttk.Frame(frame)
