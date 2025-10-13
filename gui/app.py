@@ -1200,7 +1200,13 @@ class VideoEditorApp:
         entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
         button_container = ttk.Frame(frame)
         button_container.grid(row=0, column=2, sticky='e')
-        select_button = ttk.Button(button_container, text="Selecionar...", command=command, bootstyle="secondary-outline", width=12)
+        select_button = ttk.Button(
+            button_container,
+            text="Selecionar...",
+            command=command,
+            bootstyle="info-outline",
+            width=12,
+        )
         select_button.pack(side=LEFT)
         if hint_text:
             ttk.Label(
