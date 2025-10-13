@@ -1,23 +1,5 @@
 {
     "algorithm": "sha256",
-    "executables": {
-        "default": {
-            "hash": "b859e40bc51661cfb179a10749fddf146f352fe6c9ee3acb370ddc12bc6900ce",
-            "signature": "342024f7712fa9a34377e1e4eb62d911b8cac2933d8cdc70d8e634505322a68a"
-        }
-    },
-    "resources": {
-        "license_checker.py": {
-            "hash": "93787fdb53c6a665fef32e901aea948d1493995afc40db369d8aee79daafd2bd",
-            "normalize_newlines": true,
-            "path": "license_checker.py",
-            "signature": "158289e66b06fcbfb8c7d2a4e69086d6a8ecc262f2171ebbc27f95c56201457a"
-        },
-        "video_processing_logic.py": {
-            "hash": "e5ea0942d43c4f9f0bbc3164e1439e5306ac34e88fa6e91a49eeaadce83ccbfb",
-            "normalize_newlines": true,
-            "path": "video_processing_logic.py",
-            "signature": "394687323ce0ab8b2cc7056c3cf4e217845771cd0cbdb55499c3dd54dbd332ae"
-        }
-    }
+    "executables": {},
+    "resources": {}
 }

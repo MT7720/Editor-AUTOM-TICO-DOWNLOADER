@@ -11,7 +11,6 @@ from tkinter import messagebox
 
 # --- MÓDULOS DE SEGURANÇA E LICENCIAMENTO ---
 import license_checker
-# CORREÇÃO: A importação agora aponta para dentro do pacote 'security'
 from security.runtime_guard import enforce_runtime_safety, schedule_integrity_check, SecurityViolation
 # ---------------------------------------------
 
@@ -84,16 +83,20 @@ if __name__ == "__main__":
     try:
         enforce_runtime_safety()
     except SecurityViolation as exc:
-        # A função já encerra o programa, mas este bloco lida com a interface
         messagebox.showerror(APP_NAME, f"Violação de segurança detectada:\n{exc}\nO programa será encerrado.")
         sys.exit(2)
     
+    # Cria a janela principal mas a mantém escondida por enquanto
     root = ttk.Window(themename="superhero")
     root.withdraw()
 
     try:
         # 2. VERIFICAÇÃO DA LICENÇA
         print("Verificando licença...")
+        
+        # --- LÓGICA CORRIGIDA ---
+        # A janela principal (root) é passada para o verificador de licença.
+        # Ele a usará como "mãe" para a janela de ativação, se necessário.
         is_licensed, license_data = license_checker.check_license(root)
 
         if is_licensed:
@@ -102,17 +105,18 @@ if __name__ == "__main__":
             # 3. AGENDAMENTO DAS VERIFICAÇÕES DE SEGURANÇA CONTÍNUAS
             schedule_integrity_check()
             
+            # Agora que a licença está validada, construímos e mostramos a aplicação principal
             app = VideoEditorApp(root=root, license_data=license_data)
-            root.deiconify()
+            root.deiconify() # Mostra a janela principal
             root.mainloop()
             print("A interface principal foi encerrada normalmente.")
         else:
             print("Licença inválida ou não fornecida. Encerrando.")
             root.destroy()
             sys.exit(1)
+            
     except Exception:
         print("Ocorreu um erro fatal durante a inicialização do programa.", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         messagebox.showerror("Erro Fatal", "Ocorreu um erro inesperado e o programa precisa ser fechado. Verifique o crash_log.txt para detalhes.")
         sys.exit(1)
-
