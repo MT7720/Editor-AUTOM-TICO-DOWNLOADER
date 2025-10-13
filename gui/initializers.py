@@ -82,6 +82,14 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
     app.intro_enabled_var = ttk.BooleanVar(value=config.get("intro_enabled", False))
     app.intro_default_text_var = ttk.StringVar(value=config.get("intro_default_text", ""))
     app.intro_language_var = ttk.StringVar(value=config.get("intro_language_code", "auto"))
+    intro_typing_duration = config.get("intro_typing_duration_seconds", 15)
+    if not isinstance(intro_typing_duration, int) or intro_typing_duration <= 0:
+        intro_typing_duration = 15
+    app.intro_typing_duration_var = ttk.IntVar(value=intro_typing_duration)
+    intro_hold_duration = config.get("intro_hold_duration_seconds", 2)
+    if not isinstance(intro_hold_duration, int) or intro_hold_duration <= 0:
+        intro_hold_duration = 2
+    app.intro_hold_duration_var = ttk.IntVar(value=intro_hold_duration)
 
     app.banner_enabled_var = ttk.BooleanVar(value=config.get("banner_enabled", False))
     app.banner_default_text_var = ttk.StringVar(value=config.get("banner_default_text", ""))

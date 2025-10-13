@@ -18,3 +18,5 @@ def test_save_and_load_config(tmp_path, monkeypatch):
     loaded = ConfigManager.load_config()
     for key, value in sample.items():
         assert loaded[key] == value
+    assert loaded["intro_typing_duration_seconds"] == 15
+    assert loaded["intro_hold_duration_seconds"] == 2

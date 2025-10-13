@@ -130,13 +130,31 @@ def create_typing_intro_clip(
     if cancel_event.is_set():
         return None
 
+    text = text or ""
     width, height = resolution
     frame_rate = 30
     base_char_duration = 0.08
     frames_per_char = max(2, int(round(frame_rate * base_char_duration)))
     char_duration = frames_per_char / frame_rate
-    hold_frames = max(frame_rate, int(round(frame_rate * 1.5)))
+
+    default_hold_seconds = 1.5
+    hold_seconds = default_hold_seconds
+    hold_frames = max(frame_rate, int(round(frame_rate * hold_seconds)))
     hold_duration = hold_frames / frame_rate
+
+    configured_typing_duration = params.get("intro_typing_duration_seconds")
+    if isinstance(configured_typing_duration, (int, float)) and configured_typing_duration > 0 and len(text) > 0:
+        target_char_duration = float(configured_typing_duration) / max(len(text), 1)
+        min_char_duration = 1.0 / frame_rate
+        target_char_duration = max(min_char_duration, target_char_duration)
+        frames_per_char = max(1, int(round(frame_rate * target_char_duration)))
+        char_duration = frames_per_char / frame_rate
+
+    configured_hold_duration = params.get("intro_hold_duration_seconds")
+    if isinstance(configured_hold_duration, (int, float)) and configured_hold_duration > 0:
+        hold_seconds = float(configured_hold_duration)
+        hold_frames = max(frame_rate, int(round(frame_rate * hold_seconds)))
+        hold_duration = hold_frames / frame_rate
 
     intro_temp_dir = tempfile.mkdtemp(prefix="intro-clip-", dir=temp_dir)
     frames_dir = os.path.join(intro_temp_dir, "frames")

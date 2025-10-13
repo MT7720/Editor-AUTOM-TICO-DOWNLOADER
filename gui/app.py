@@ -674,10 +674,37 @@ class VideoEditorApp:
         self.intro_language_combobox.bind("<<ComboboxSelected>>", lambda event: self._on_intro_language_selected())
         ttk.Label(settings_box, text="Quando automático, cada vídeo usa o texto configurado para o idioma detectado.", bootstyle="secondary", wraplength=760).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        ttk.Label(settings_box, text="4) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        durations_frame = ttk.Frame(settings_box)
+        durations_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 5))
+        durations_frame.columnconfigure(1, weight=1)
+        durations_frame.columnconfigure(3, weight=1)
+
+        ttk.Label(durations_frame, text="4) Duração da digitação (s):").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        typing_values = tuple(str(value) for value in (10, 15, 20, 30))
+        self.intro_typing_duration_spinbox = ttk.Spinbox(
+            durations_frame,
+            values=typing_values,
+            textvariable=self.intro_typing_duration_var,
+            state="readonly",
+            width=6,
+        )
+        self.intro_typing_duration_spinbox.grid(row=0, column=1, sticky="w")
+
+        ttk.Label(durations_frame, text="Pausa após digitar (s):").grid(row=0, column=2, sticky="w", padx=(20, 10))
+        hold_values = tuple(str(value) for value in (2, 4, 6, 8))
+        self.intro_hold_duration_spinbox = ttk.Spinbox(
+            durations_frame,
+            values=hold_values,
+            textvariable=self.intro_hold_duration_var,
+            state="readonly",
+            width=6,
+        )
+        self.intro_hold_duration_spinbox.grid(row=0, column=3, sticky="w")
+
+        ttk.Label(settings_box, text="5) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=5, column=0, columnspan=2, sticky="w", pady=(12, 5))
         self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=6, wrap="word")
-        self.intro_default_text_widget.grid(row=5, column=0, columnspan=2, sticky="ew")
-        settings_box.rowconfigure(5, weight=1)
+        self.intro_default_text_widget.grid(row=6, column=0, columnspan=2, sticky="ew")
+        settings_box.rowconfigure(6, weight=1)
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
         tab.rowconfigure(2, weight=1)
         self._set_intro_language_display_from_code(self.intro_language_var.get())
@@ -705,6 +732,10 @@ class VideoEditorApp:
             self.single_language_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_language_combobox'):
             self.intro_language_combobox.configure(state="readonly" if enabled else DISABLED)
+        if hasattr(self, 'intro_typing_duration_spinbox'):
+            self.intro_typing_duration_spinbox.configure(state="readonly" if enabled else DISABLED)
+        if hasattr(self, 'intro_hold_duration_spinbox'):
+            self.intro_hold_duration_spinbox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_default_text_widget'):
             self.intro_default_text_widget.configure(state=state)
 
@@ -1915,6 +1946,14 @@ class VideoEditorApp:
                 self.intro_default_text_widget.configure(state=DISABLED)
         params['intro_default_text'] = intro_default_text.strip()
         params['intro_language_code'] = self.intro_language_var.get()
+        try:
+            params['intro_typing_duration_seconds'] = int(self.intro_typing_duration_var.get())
+        except Exception:
+            params['intro_typing_duration_seconds'] = 15
+        try:
+            params['intro_hold_duration_seconds'] = int(self.intro_hold_duration_var.get())
+        except Exception:
+            params['intro_hold_duration_seconds'] = 2
         params['intro_texts'] = self._collect_intro_texts()
         self._store_current_banner_translation()
         banner_default_text = self.banner_default_text_var.get()
@@ -2254,6 +2293,8 @@ class VideoEditorApp:
             'intro_enabled': self.intro_enabled_var.get(),
             'intro_default_text': intro_default_text,
             'intro_language_code': self.intro_language_var.get(),
+            'intro_typing_duration_seconds': self.intro_typing_duration_var.get(),
+            'intro_hold_duration_seconds': self.intro_hold_duration_var.get(),
             'intro_texts': self._collect_intro_texts(),
             'single_language_code': self.single_language_code_var.get(),
             'banner_enabled': self.banner_enabled_var.get(),

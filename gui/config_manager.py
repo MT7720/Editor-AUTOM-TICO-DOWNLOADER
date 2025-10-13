@@ -74,6 +74,8 @@ class ConfigManager:
             "intro_default_text": "",
             "intro_texts": {},
             "intro_language_code": "auto",
+            "intro_typing_duration_seconds": 15,
+            "intro_hold_duration_seconds": 2,
             "single_language_code": "auto",
             "banner_enabled": False,
             "banner_default_text": "",
@@ -93,8 +95,18 @@ class ConfigManager:
                     if file_content:
                         saved_config = json.loads(file_content)
                         default_config.update(saved_config)
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive parsing
+            logger.warning("Ficheiro de configuração corrompido: %s", exc)
         except Exception as exc:  # pragma: no cover - defensive I/O
             logger.warning("Não foi possível carregar o ficheiro de configuração: %s", exc)
+
+        typing_duration = default_config.get("intro_typing_duration_seconds")
+        if not isinstance(typing_duration, int) or typing_duration <= 0:
+            default_config["intro_typing_duration_seconds"] = 15
+
+        hold_duration = default_config.get("intro_hold_duration_seconds")
+        if not isinstance(hold_duration, int) or hold_duration <= 0:
+            default_config["intro_hold_duration_seconds"] = 2
         return default_config
 
     @staticmethod
