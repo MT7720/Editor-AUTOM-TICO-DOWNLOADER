@@ -307,36 +307,22 @@ class VideoEditorApp:
 
         self._mode_descriptions: Dict[str, str] = {}
         self._mode_labels: Dict[str, str] = {}
-        self._mode_value_from_label: Dict[str, str] = {}
-        for text, value, tip in mode_options:
-            self._add_mode_option(text=text, value=value, description=tip)
+        self._mode_buttons: Dict[str, ttk.Radiobutton] = {}
 
-        initial_label = self._mode_labels.get(self.media_type.get())
-        if initial_label is None and mode_options:
-            initial_label = mode_options[0][0]
-        self._mode_selector_var = tk.StringVar(value=initial_label or "")
+        buttons_frame = ttk.Frame(mode_container)
+        buttons_frame.grid(row=0, column=0, sticky="ew")
 
-        self._mode_selector = ttk.Combobox(
-            mode_container,
-            textvariable=self._mode_selector_var,
-            values=list(self._mode_value_from_label.keys()),
-            state="readonly",
-        )
-        self._mode_selector.grid(row=0, column=0, sticky="ew")
-        self._mode_selector.bind("<<ComboboxSelected>>", self._on_mode_selector_changed)
+        for index, (text, value, tip) in enumerate(mode_options):
+            self._add_mode_option(
+                container=buttons_frame,
+                text=text,
+                value=value,
+                description=tip,
+                position=index,
+            )
 
-        self._mode_help_button = ttk.Button(
-            mode_container,
-            text="(?)",
-            width=3,
-            command=self._show_mode_description,
-            bootstyle="secondary-outline",
-        )
-        self._mode_help_button.grid(row=0, column=1, sticky="e", padx=(10, 0))
-        self._mode_help_tooltip = ToolTip(self._mode_help_button, "")
-
-        if not hasattr(self.media_type, "_mode_selector_trace"):
-            self.media_type._mode_selector_trace = self.media_type.trace_add(
+        if not hasattr(self.media_type, "_mode_buttons_trace"):
+            self.media_type._mode_buttons_trace = self.media_type.trace_add(
                 "write", lambda *_: self._refresh_mode_cards()
             )
         self._refresh_mode_cards()
@@ -494,52 +480,47 @@ class VideoEditorApp:
         # --- Ações e Progresso (Grid row atualizado) ---
         self._create_editor_process_section(tab, 4)
 
-    def _add_mode_option(self, *, text: str, value: str, description: str) -> None:
+    def _add_mode_option(
+        self,
+        *,
+        container: ttk.Frame,
+        text: str,
+        value: str,
+        description: str,
+        position: int,
+    ) -> None:
         self._mode_descriptions[value] = description
         self._mode_labels[value] = text
-        self._mode_value_from_label[text] = value
+        button = ttk.Radiobutton(
+            container,
+            text=text,
+            value=value,
+            variable=self.media_type,
+            command=self._on_mode_option_selected,
+            bootstyle="outline-toolbutton",
+        )
+        button.pack(side=LEFT, padx=(0 if position == 0 else 10, 0))
+        ToolTip(button, description)
+        self._mode_buttons[value] = button
 
     def _on_mode_option_selected(self):
         self.update_ui_for_media_type()
         self._refresh_mode_cards()
 
-    def _on_mode_selector_changed(self, event=None):
-        selected_label = self._mode_selector_var.get()
-        selected_value = self._mode_value_from_label.get(selected_label)
-        if selected_value and selected_value != self.media_type.get():
-            self.media_type.set(selected_value)
-            self._on_mode_option_selected()
-        else:
-            self._refresh_mode_cards()
-
     def _refresh_mode_cards(self):
         current_mode = self.media_type.get()
-        label = self._mode_labels.get(current_mode)
-        if label is None and self._mode_value_from_label:
-            fallback_label = next(iter(self._mode_value_from_label))
-            fallback_value = self._mode_value_from_label.get(fallback_label)
-            label = fallback_label
-            if fallback_value and fallback_value != current_mode:
+        if current_mode not in self._mode_buttons and self._mode_buttons:
+            fallback_value = next(iter(self._mode_buttons))
+            if fallback_value != current_mode:
                 self.media_type.set(fallback_value)
                 current_mode = fallback_value
-        if label is not None and hasattr(self, "_mode_selector_var"):
-            if self._mode_selector_var.get() != label:
-                self._mode_selector_var.set(label)
-        self._update_mode_help_tooltip(current_mode)
 
-    def _update_mode_help_tooltip(self, mode_value: Optional[str] = None) -> None:
-        if not hasattr(self, "_mode_help_tooltip"):
-            return
-        description = self._mode_descriptions.get(mode_value or self.media_type.get(), "")
-        if not description:
-            description = "Descrição indisponível para este modo."
-        self._mode_help_tooltip.text = description
-
-    def _show_mode_description(self):
-        current_mode = self.media_type.get()
-        title = self._mode_labels.get(current_mode, "Modo de Operação")
-        description = self._mode_descriptions.get(current_mode, "Descrição indisponível para este modo.")
-        Messagebox.show_info(description, title, parent=self.root)
+        for value, button in self._mode_buttons.items():
+            try:
+                style = "primary-toolbutton" if value == current_mode else "outline-toolbutton"
+                button.configure(bootstyle=style)
+            except tk.TclError:
+                pass
 
     def _on_single_language_selected(self, event=None):
         display_value = self.single_language_display_var.get()
