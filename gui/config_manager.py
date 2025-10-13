@@ -10,6 +10,12 @@ from typing import Any, Dict
 from .constants import (
     CONFIG_FILE,
     EFFECT_BLEND_MODES,
+    INTRO_HOLD_DURATION_DEFAULT,
+    INTRO_HOLD_DURATION_OPTIONS,
+    INTRO_POST_HOLD_DURATION_DEFAULT,
+    INTRO_POST_HOLD_DURATION_OPTIONS,
+    INTRO_TYPING_DURATION_DEFAULT,
+    INTRO_TYPING_DURATION_OPTIONS,
     OVERLAY_POSITIONS,
     PRESENTER_POSITIONS,
     RESOLUTIONS,
@@ -75,6 +81,9 @@ class ConfigManager:
             "intro_texts": {},
             "intro_language_code": "auto",
             "single_language_code": "auto",
+            "intro_typing_duration": INTRO_TYPING_DURATION_DEFAULT,
+            "intro_hold_duration": INTRO_HOLD_DURATION_DEFAULT,
+            "intro_post_hold_duration": INTRO_POST_HOLD_DURATION_DEFAULT,
         }
         try:
             if os.path.exists(CONFIG_FILE):
@@ -85,6 +94,21 @@ class ConfigManager:
                         default_config.update(saved_config)
         except Exception as exc:  # pragma: no cover - defensive I/O
             logger.warning("Não foi possível carregar o ficheiro de configuração: %s", exc)
+        default_config["intro_typing_duration"] = ConfigManager._coerce_int_option(
+            default_config.get("intro_typing_duration"),
+            INTRO_TYPING_DURATION_OPTIONS,
+            INTRO_TYPING_DURATION_DEFAULT,
+        )
+        default_config["intro_hold_duration"] = ConfigManager._coerce_int_option(
+            default_config.get("intro_hold_duration"),
+            INTRO_HOLD_DURATION_OPTIONS,
+            INTRO_HOLD_DURATION_DEFAULT,
+        )
+        default_config["intro_post_hold_duration"] = ConfigManager._coerce_int_option(
+            default_config.get("intro_post_hold_duration"),
+            INTRO_POST_HOLD_DURATION_OPTIONS,
+            INTRO_POST_HOLD_DURATION_DEFAULT,
+        )
         return default_config
 
     @staticmethod
@@ -94,6 +118,14 @@ class ConfigManager:
                 json.dump(config, f, indent=2, ensure_ascii=False)
         except Exception as exc:  # pragma: no cover - defensive I/O
             logger.error("Erro ao guardar o ficheiro de configuração: %s", exc)
+
+    @staticmethod
+    def _coerce_int_option(value: Any, allowed: Any, default: int) -> int:
+        try:
+            int_value = int(value)
+        except (TypeError, ValueError):
+            return default
+        return int_value if int_value in set(allowed) else default
 
 
 __all__ = ["ConfigManager"]

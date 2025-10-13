@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 try:
     import video_processing_logic  # type: ignore
@@ -100,6 +100,14 @@ EFFECT_BLEND_MODES = {
     "Multiplicar (Multiply)": "multiply",
 }
 
+INTRO_TYPING_DURATION_OPTIONS: List[int] = [40, 60, 80, 100, 130]
+INTRO_HOLD_DURATION_OPTIONS: List[int] = [500, 1000, 1500, 2000, 3000]
+INTRO_POST_HOLD_DURATION_OPTIONS: List[int] = [0, 250, 500, 750, 1000, 1500, 2000]
+
+INTRO_TYPING_DURATION_DEFAULT = 80
+INTRO_HOLD_DURATION_DEFAULT = 1500
+INTRO_POST_HOLD_DURATION_DEFAULT = 500
+
 if video_processing_logic and hasattr(video_processing_logic, "LANGUAGE_CODE_MAP"):
     LANGUAGE_CODE_MAP: Dict[str, str] = video_processing_logic.LANGUAGE_CODE_MAP  # type: ignore[assignment]
 else:
@@ -139,6 +147,12 @@ __all__ = [
     "SLIDESHOW_TRANSITIONS",
     "SLIDESHOW_MOTIONS",
     "EFFECT_BLEND_MODES",
+    "INTRO_TYPING_DURATION_OPTIONS",
+    "INTRO_HOLD_DURATION_OPTIONS",
+    "INTRO_POST_HOLD_DURATION_OPTIONS",
+    "INTRO_TYPING_DURATION_DEFAULT",
+    "INTRO_HOLD_DURATION_DEFAULT",
+    "INTRO_POST_HOLD_DURATION_DEFAULT",
     "LANGUAGE_CODE_MAP",
     "APP_DATA_PATH",
 ]

@@ -12,6 +12,9 @@ import ttkbootstrap as ttk
 
 from .constants import (
     EFFECT_BLEND_MODES,
+    INTRO_HOLD_DURATION_DEFAULT,
+    INTRO_POST_HOLD_DURATION_DEFAULT,
+    INTRO_TYPING_DURATION_DEFAULT,
     LANGUAGE_CODE_MAP,
     OVERLAY_POSITIONS,
     PRESENTER_POSITIONS,
@@ -82,6 +85,15 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
     app.intro_enabled_var = ttk.BooleanVar(value=config.get("intro_enabled", False))
     app.intro_default_text_var = ttk.StringVar(value=config.get("intro_default_text", ""))
     app.intro_language_var = ttk.StringVar(value=config.get("intro_language_code", "auto"))
+    app.intro_typing_duration_var = ttk.IntVar(
+        value=int(config.get("intro_typing_duration", INTRO_TYPING_DURATION_DEFAULT))
+    )
+    app.intro_hold_duration_var = ttk.IntVar(
+        value=int(config.get("intro_hold_duration", INTRO_HOLD_DURATION_DEFAULT))
+    )
+    app.intro_post_hold_duration_var = ttk.IntVar(
+        value=int(config.get("intro_post_hold_duration", INTRO_POST_HOLD_DURATION_DEFAULT))
+    )
 
     stored_language_code = config.get("single_language_code", "auto") or "auto"
     if isinstance(stored_language_code, str) and stored_language_code.lower() != "auto":

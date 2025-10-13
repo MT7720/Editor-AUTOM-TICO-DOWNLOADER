@@ -174,7 +174,15 @@ def _combine_intro_with_main(
     if main_duration > 0:
         fade_duration = min(fade_duration, main_duration / 2)
     fade_duration = max(0.3, fade_duration)
-    offset = max(0.0, intro_duration - fade_duration)
+    typing_duration = float(intro_info.get('typing_duration', 0.0) or 0.0)
+    hold_duration = float(intro_info.get('hold_duration', 0.0) or 0.0)
+    post_hold_duration = float(intro_info.get('post_hold_duration', 0.0) or 0.0)
+    desired_offset = typing_duration + hold_duration + post_hold_duration
+    max_offset = max(0.0, intro_duration - fade_duration)
+    if desired_offset > 0:
+        offset = min(max_offset, desired_offset)
+    else:
+        offset = max_offset
 
     intro_has_audio = any(stream.get('codec_type') == 'audio' for stream in intro_props.get('streams', []))
     main_has_audio = any(stream.get('codec_type') == 'audio' for stream in main_props.get('streams', []))

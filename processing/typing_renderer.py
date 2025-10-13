@@ -83,6 +83,7 @@ def generate_typing_audio(
     hold_duration: float,
     output_path: str,
     sample_rate: int = 44100,
+    post_hold_duration: float = 0.0,
 ) -> float:
     amplitude = 0.35
     base_frequency = 1100.0
@@ -109,6 +110,10 @@ def generate_typing_audio(
     if hold_samples:
         data.extend([0] * hold_samples)
 
+    post_hold_samples = max(0, int(round(post_hold_duration * sample_rate)))
+    if post_hold_samples:
+        data.extend([0] * post_hold_samples)
+
     with wave.open(output_path, "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
@@ -132,11 +137,26 @@ def create_typing_intro_clip(
 
     width, height = resolution
     frame_rate = 30
-    base_char_duration = 0.08
-    frames_per_char = max(2, int(round(frame_rate * base_char_duration)))
-    char_duration = frames_per_char / frame_rate
-    hold_frames = max(frame_rate, int(round(frame_rate * 1.5)))
-    hold_duration = hold_frames / frame_rate
+
+    def _coerce_duration_ms(value: Optional[int], default: int) -> int:
+        try:
+            coerced = int(value) if value is not None else default
+        except (TypeError, ValueError):
+            coerced = default
+        return max(0, coerced)
+
+    typing_duration_ms = _coerce_duration_ms(params.get("intro_typing_duration"), 80)
+    hold_duration_ms = _coerce_duration_ms(params.get("intro_hold_duration"), 1500)
+    post_hold_duration_ms = _coerce_duration_ms(params.get("intro_post_hold_duration"), 500)
+
+    frames_per_char = max(1, int(round(frame_rate * (typing_duration_ms / 1000.0))))
+    char_duration = frames_per_char / frame_rate if frames_per_char else typing_duration_ms / 1000.0
+
+    hold_frames = max(0, int(round(frame_rate * (hold_duration_ms / 1000.0))))
+    hold_duration = hold_frames / frame_rate if hold_frames else 0.0
+
+    post_hold_frames = max(0, int(round(frame_rate * (post_hold_duration_ms / 1000.0))))
+    post_hold_duration = post_hold_frames / frame_rate if post_hold_frames else 0.0
 
     intro_temp_dir = tempfile.mkdtemp(prefix="intro-clip-", dir=temp_dir)
     frames_dir = os.path.join(intro_temp_dir, "frames")
@@ -206,8 +226,15 @@ def create_typing_intro_clip(
         frame_image.save(frame_path)
         frame_index = 1
 
+    typing_frames_total = frame_index
+
     final_image = render_frame_text(text)
     for _ in range(hold_frames):
+        frame_path = os.path.join(frames_dir, f"frame_{frame_index:05d}.png")
+        final_image.save(frame_path)
+        frame_index += 1
+
+    for _ in range(post_hold_frames):
         frame_path = os.path.join(frames_dir, f"frame_{frame_index:05d}.png")
         final_image.save(frame_path)
         frame_index += 1
@@ -216,7 +243,13 @@ def create_typing_intro_clip(
     total_duration = total_frames / frame_rate
 
     audio_path = os.path.join(intro_temp_dir, "typing_audio.wav")
-    generate_typing_audio(text, char_duration, hold_duration, audio_path)
+    generate_typing_audio(
+        text,
+        char_duration,
+        hold_duration,
+        audio_path,
+        post_hold_duration=post_hold_duration,
+    )
 
     intro_clip_path = os.path.join(intro_temp_dir, "typing_intro.mp4")
     frame_pattern = os.path.join(frames_dir, "frame_%05d.png")
@@ -238,4 +271,10 @@ def create_typing_intro_clip(
     return {
         "path": intro_clip_path,
         "duration": total_duration,
+        "typing_duration": typing_frames_total / frame_rate,
+        "hold_duration": hold_duration,
+        "post_hold_duration": post_hold_duration,
+        "frames_per_char": frames_per_char,
+        "hold_frames": hold_frames,
+        "post_hold_frames": post_hold_frames,
     }

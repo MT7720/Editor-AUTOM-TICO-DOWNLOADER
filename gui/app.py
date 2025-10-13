@@ -47,6 +47,9 @@ from .constants import (
     DEFAULT_GEOMETRY,
     EFFECT_BLEND_MODES,
     ICON_FILE,
+    INTRO_HOLD_DURATION_OPTIONS,
+    INTRO_POST_HOLD_DURATION_OPTIONS,
+    INTRO_TYPING_DURATION_OPTIONS,
     LANGUAGE_CODE_MAP,
     OVERLAY_POSITIONS,
     PRESENTER_POSITIONS,
@@ -673,10 +676,142 @@ class VideoEditorApp:
         self.intro_language_combobox.bind("<<ComboboxSelected>>", lambda event: self._on_intro_language_selected())
         ttk.Label(settings_box, text="Quando automático, cada vídeo usa o texto configurado para o idioma detectado.", bootstyle="secondary", wraplength=760).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        ttk.Label(settings_box, text="4) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        ttk.Label(settings_box, text="4) Ajuste os tempos da animação:").grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 5))
+
+        durations_frame = ttk.Frame(settings_box)
+        durations_frame.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(0, 5))
+        durations_frame.columnconfigure(1, weight=1)
+
+        def _format_seconds(ms_value: int) -> str:
+            seconds = ms_value / 1000.0
+            if ms_value == 0:
+                return "0 s"
+            if ms_value % 1000 == 0:
+                return f"{int(seconds)} s"
+            return f"{seconds:.1f} s"
+
+        self._intro_typing_duration_value_to_display = {
+            value: f"{value} ms por caractere" for value in INTRO_TYPING_DURATION_OPTIONS
+        }
+        self._intro_typing_duration_display_to_value = {
+            display: value for value, display in self._intro_typing_duration_value_to_display.items()
+        }
+        typing_display_values = list(self._intro_typing_duration_display_to_value.keys())
+        typing_current_value = self.intro_typing_duration_var.get()
+        typing_current_display = self._intro_typing_duration_value_to_display.get(
+            typing_current_value,
+            typing_display_values[0],
+        )
+        if typing_current_value not in self._intro_typing_duration_value_to_display:
+            self.intro_typing_duration_var.set(
+                self._intro_typing_duration_display_to_value[typing_display_values[0]]
+            )
+
+        self.intro_typing_duration_display_var = ttk.StringVar(value=typing_current_display)
+        ttk.Label(durations_frame, text="Velocidade da digitação:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        self.intro_typing_duration_combobox = ttk.Combobox(
+            durations_frame,
+            textvariable=self.intro_typing_duration_display_var,
+            values=typing_display_values,
+            state="readonly",
+        )
+        self.intro_typing_duration_combobox.grid(row=0, column=1, sticky="ew")
+        self.intro_typing_duration_combobox.bind(
+            "<<ComboboxSelected>>",
+            lambda event: self._on_intro_duration_display_selected(
+                self._intro_typing_duration_display_to_value,
+                self.intro_typing_duration_var,
+                self.intro_typing_duration_display_var,
+            ),
+        )
+
+        self._intro_hold_duration_value_to_display = {
+            value: f"{_format_seconds(value)} após digitar" for value in INTRO_HOLD_DURATION_OPTIONS
+        }
+        self._intro_hold_duration_display_to_value = {
+            display: value for value, display in self._intro_hold_duration_value_to_display.items()
+        }
+        hold_display_values = list(self._intro_hold_duration_display_to_value.keys())
+        hold_current_value = self.intro_hold_duration_var.get()
+        hold_current_display = self._intro_hold_duration_value_to_display.get(
+            hold_current_value,
+            hold_display_values[0],
+        )
+        if hold_current_value not in self._intro_hold_duration_value_to_display:
+            self.intro_hold_duration_var.set(
+                self._intro_hold_duration_display_to_value[hold_display_values[0]]
+            )
+
+        ttk.Label(durations_frame, text="Tempo de permanência final:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(8, 0))
+        self.intro_hold_duration_display_var = ttk.StringVar(value=hold_current_display)
+        self.intro_hold_duration_combobox = ttk.Combobox(
+            durations_frame,
+            textvariable=self.intro_hold_duration_display_var,
+            values=hold_display_values,
+            state="readonly",
+        )
+        self.intro_hold_duration_combobox.grid(row=1, column=1, sticky="ew", pady=(8, 0))
+        self.intro_hold_duration_combobox.bind(
+            "<<ComboboxSelected>>",
+            lambda event: self._on_intro_duration_display_selected(
+                self._intro_hold_duration_display_to_value,
+                self.intro_hold_duration_var,
+                self.intro_hold_duration_display_var,
+            ),
+        )
+
+        self._intro_post_hold_duration_value_to_display = {}
+        for value in INTRO_POST_HOLD_DURATION_OPTIONS:
+            if value == 0:
+                display = "0 s (início imediato)"
+            else:
+                display = f"{_format_seconds(value)} extra antes do vídeo"
+            self._intro_post_hold_duration_value_to_display[value] = display
+        self._intro_post_hold_duration_display_to_value = {
+            display: value for value, display in self._intro_post_hold_duration_value_to_display.items()
+        }
+        post_hold_display_values = list(self._intro_post_hold_duration_display_to_value.keys())
+        post_hold_current_value = self.intro_post_hold_duration_var.get()
+        post_hold_current_display = self._intro_post_hold_duration_value_to_display.get(
+            post_hold_current_value,
+            post_hold_display_values[0],
+        )
+        if post_hold_current_value not in self._intro_post_hold_duration_value_to_display:
+            self.intro_post_hold_duration_var.set(
+                self._intro_post_hold_duration_display_to_value[post_hold_display_values[0]]
+            )
+
+        ttk.Label(durations_frame, text="Tempo extra antes do vídeo principal:").grid(
+            row=2, column=0, sticky="w", padx=(0, 10), pady=(8, 0)
+        )
+        self.intro_post_hold_duration_display_var = ttk.StringVar(value=post_hold_current_display)
+        self.intro_post_hold_duration_combobox = ttk.Combobox(
+            durations_frame,
+            textvariable=self.intro_post_hold_duration_display_var,
+            values=post_hold_display_values,
+            state="readonly",
+        )
+        self.intro_post_hold_duration_combobox.grid(row=2, column=1, sticky="ew", pady=(8, 0))
+        self.intro_post_hold_duration_combobox.bind(
+            "<<ComboboxSelected>>",
+            lambda event: self._on_intro_duration_display_selected(
+                self._intro_post_hold_duration_display_to_value,
+                self.intro_post_hold_duration_var,
+                self.intro_post_hold_duration_display_var,
+            ),
+        )
+
+        ttk.Label(
+            settings_box,
+            text="Esses valores controlam a velocidade da digitação, o tempo final exibido e a pausa antes do conteúdo principal.",
+            bootstyle="secondary",
+            wraplength=760,
+        ).grid(row=6, column=0, columnspan=2, sticky="w")
+
+        ttk.Label(settings_box, text="5) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=7, column=0, columnspan=2, sticky="w", pady=(12, 5))
         self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=6, wrap="word")
-        self.intro_default_text_widget.grid(row=5, column=0, columnspan=2, sticky="ew")
-        settings_box.rowconfigure(5, weight=1)
+        self.intro_default_text_widget.grid(row=8, column=0, columnspan=2, sticky="ew")
+        settings_box.rowconfigure(8, weight=1)
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
         tab.rowconfigure(2, weight=1)
         self._set_intro_language_display_from_code(self.intro_language_var.get())
@@ -705,6 +840,14 @@ class VideoEditorApp:
             self.intro_language_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_default_text_widget'):
             self.intro_default_text_widget.configure(state=state)
+        for widget_name in (
+            'intro_typing_duration_combobox',
+            'intro_hold_duration_combobox',
+            'intro_post_hold_duration_combobox',
+        ):
+            if hasattr(self, widget_name):
+                widget = getattr(self, widget_name)
+                widget.configure(state="readonly" if enabled else DISABLED)
 
     def _collect_intro_texts(self) -> Dict[str, str]:
         return {}
@@ -1540,6 +1683,9 @@ class VideoEditorApp:
         params['intro_default_text'] = intro_default_text.strip()
         params['intro_language_code'] = self.intro_language_var.get()
         params['intro_texts'] = self._collect_intro_texts()
+        params.pop('intro_typing_duration_display', None)
+        params.pop('intro_hold_duration_display', None)
+        params.pop('intro_post_hold_duration_display', None)
         logger.debug(f"Parâmetros finais coletados: {json.dumps(params, indent=2, default=str)}")
         return params
 
@@ -1850,9 +1996,22 @@ class VideoEditorApp:
             'intro_language_code': self.intro_language_var.get(),
             'intro_texts': self._collect_intro_texts(),
             'single_language_code': self.single_language_code_var.get(),
+            'intro_typing_duration': int(self.intro_typing_duration_var.get()),
+            'intro_hold_duration': int(self.intro_hold_duration_var.get()),
+            'intro_post_hold_duration': int(self.intro_post_hold_duration_var.get()),
         }
         ConfigManager.save_config(config_to_save)
         logger.info("Configuração guardada.")
+
+    def _on_intro_duration_display_selected(self, mapping: Dict[str, int], target_var: ttk.IntVar, display_var: ttk.StringVar) -> None:
+        selection = display_var.get()
+        value = mapping.get(selection)
+        if value is None and mapping:
+            first_label = next(iter(mapping.keys()))
+            display_var.set(first_label)
+            value = mapping[first_label]
+        if value is not None:
+            target_var.set(value)
 
     def on_closing(self):
         # ... (sem alterações) ...
