@@ -700,10 +700,49 @@ class VideoEditorApp:
         self.intro_font_bold_check.grid(row=0, column=2, sticky="w", padx=(12, 0))
         ToolTip(self.intro_font_bold_check, "Ativa letras mais encorpadas para destacar a introdução.")
 
-        ttk.Label(settings_box, text="5) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=6, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        ttk.Label(settings_box, text="5) Ajuste a velocidade da digitação e a pausa final:").grid(row=6, column=0, columnspan=2, sticky="w", pady=(12, 5))
+
+        intro_timing_frame = ttk.Frame(settings_box)
+        intro_timing_frame.grid(row=7, column=0, columnspan=2, sticky="ew")
+        intro_timing_frame.columnconfigure(1, weight=1)
+        intro_timing_frame.columnconfigure(3, weight=1)
+
+        ttk.Label(intro_timing_frame, text="Duração da animação (s):").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        typing_duration_choices = ["10", "15", "20", "30"]
+        self.intro_typing_duration_combobox = ttk.Combobox(
+            intro_timing_frame,
+            textvariable=self.intro_typing_duration_seconds_var,
+            values=typing_duration_choices,
+            state="readonly",
+            width=8,
+        )
+        self.intro_typing_duration_combobox.grid(row=0, column=1, sticky="w")
+        self.intro_typing_duration_combobox.set(str(self.intro_typing_duration_seconds_var.get()))
+        ToolTip(
+            self.intro_typing_duration_combobox,
+            "Controla quanto tempo a animação de digitação deve demorar antes de concluir.",
+        )
+
+        ttk.Label(intro_timing_frame, text="Pausa final (s):").grid(row=0, column=2, sticky="w", padx=(20, 10))
+        self.intro_hold_duration_spinbox = ttk.Spinbox(
+            intro_timing_frame,
+            from_=1,
+            to=15,
+            increment=1,
+            textvariable=self.intro_hold_duration_seconds_var,
+            width=5,
+            state="readonly",
+        )
+        self.intro_hold_duration_spinbox.grid(row=0, column=3, sticky="w")
+        ToolTip(
+            self.intro_hold_duration_spinbox,
+            "Define por quantos segundos a tela final permanece visível antes do conteúdo principal.",
+        )
+
+        ttk.Label(settings_box, text="6) Texto da introdução (será traduzido automaticamente quando necessário):").grid(row=8, column=0, columnspan=2, sticky="w", pady=(12, 5))
         self.intro_default_text_widget = scrolledtext.ScrolledText(settings_box, height=6, wrap="word")
-        self.intro_default_text_widget.grid(row=7, column=0, columnspan=2, sticky="ew")
-        settings_box.rowconfigure(7, weight=1)
+        self.intro_default_text_widget.grid(row=9, column=0, columnspan=2, sticky="ew")
+        settings_box.rowconfigure(9, weight=1)
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
         tab.rowconfigure(2, weight=1)
         self._set_intro_language_display_from_code(self.intro_language_var.get())
@@ -735,6 +774,10 @@ class VideoEditorApp:
             self.intro_font_choice_combobox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_font_bold_check'):
             self.intro_font_bold_check.configure(state=NORMAL if enabled else DISABLED)
+        if hasattr(self, 'intro_typing_duration_combobox'):
+            self.intro_typing_duration_combobox.configure(state="readonly" if enabled else DISABLED)
+        if hasattr(self, 'intro_hold_duration_spinbox'):
+            self.intro_hold_duration_spinbox.configure(state="readonly" if enabled else DISABLED)
         if hasattr(self, 'intro_default_text_widget'):
             self.intro_default_text_widget.configure(state=state)
 
@@ -1948,6 +1991,14 @@ class VideoEditorApp:
         params['intro_texts'] = self._collect_intro_texts()
         params['intro_font_choice'] = self.intro_font_choice_var.get()
         params['intro_font_bold'] = self.intro_font_bold_var.get()
+        typing_duration_value = int(self.intro_typing_duration_seconds_var.get() or 10)
+        if typing_duration_value not in {10, 15, 20, 30}:
+            typing_duration_value = 10
+        params['intro_typing_duration_seconds'] = typing_duration_value
+        hold_duration_value = int(self.intro_hold_duration_seconds_var.get() or 2)
+        if hold_duration_value <= 0:
+            hold_duration_value = 2
+        params['intro_hold_duration_seconds'] = hold_duration_value
         self._store_current_banner_translation()
         banner_default_text = self.banner_default_text_var.get()
         if hasattr(self, 'banner_default_text_widget'):
@@ -2241,6 +2292,13 @@ class VideoEditorApp:
         else:
             banner_default_text = self.banner_default_text_var.get()
 
+        typing_duration_value = int(self.intro_typing_duration_seconds_var.get() or 10)
+        if typing_duration_value not in {10, 15, 20, 30}:
+            typing_duration_value = 10
+        hold_duration_value = int(self.intro_hold_duration_seconds_var.get() or 2)
+        if hold_duration_value <= 0:
+            hold_duration_value = 2
+
         config_to_save = {
             'ffmpeg_path': self.ffmpeg_path_var.get(),
             'output_folder': self.output_folder.get(),
@@ -2289,6 +2347,8 @@ class VideoEditorApp:
             'intro_texts': self._collect_intro_texts(),
             'intro_font_choice': self.intro_font_choice_var.get(),
             'intro_font_bold': self.intro_font_bold_var.get(),
+            'intro_typing_duration_seconds': typing_duration_value,
+            'intro_hold_duration_seconds': hold_duration_value,
             'single_language_code': self.single_language_code_var.get(),
             'banner_enabled': self.banner_enabled_var.get(),
             'banner_default_text': banner_default_text,

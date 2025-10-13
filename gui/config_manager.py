@@ -77,6 +77,8 @@ class ConfigManager:
             "intro_language_code": "auto",
             "intro_font_choice": INTRO_FONT_CHOICES[0] if INTRO_FONT_CHOICES else "Automático",
             "intro_font_bold": False,
+            "intro_typing_duration_seconds": 10,
+            "intro_hold_duration_seconds": 2,
             "single_language_code": "auto",
             "banner_enabled": False,
             "banner_default_text": "",
