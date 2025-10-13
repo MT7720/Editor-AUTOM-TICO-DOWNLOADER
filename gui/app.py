@@ -1190,7 +1190,7 @@ class VideoEditorApp:
     def _create_file_input(self, parent, row, label_text, var_key, command, hint_text: Optional[str] = None):
         frame = ttk.Frame(parent)
         frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
-        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=0, minsize=200)
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=0)
         ttk.Label(frame, text=label_text, anchor='w', justify='left', wraplength=350).grid(
