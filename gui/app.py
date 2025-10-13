@@ -371,7 +371,7 @@ class VideoEditorApp:
             "Pasta de Vídeos Base:",
             'batch_video',
             lambda: self.select_folder('batch_video', "Selecione a Pasta de Vídeos Base"),
-            hint_text="Obrigatória",
+            hint_text="⚠️ Necessária para processar cada vídeo do lote.",
         )
         self._create_file_input(
             self.batch_video_inputs_frame,
@@ -379,7 +379,7 @@ class VideoEditorApp:
             "Pasta de Narrações (Áudio):",
             'batch_audio',
             lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
-            hint_text="Compartilhada · Opcional",
+            hint_text="ℹ️ Usada por todos os vídeos; forneça apenas se quiser narrar.",
         )
         self._create_file_input(
             self.batch_video_inputs_frame,
@@ -387,7 +387,7 @@ class VideoEditorApp:
             "Pasta de Legendas (SRT):",
             'batch_srt',
             lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
-            hint_text="Compartilhada · Opcional",
+            hint_text="ℹ️ Usada por todos os vídeos; importe apenas se já tiver legendas prontas.",
         )
 
         self.batch_image_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_image_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_image_inputs_frame.columnconfigure(0, weight=1)
@@ -397,7 +397,7 @@ class VideoEditorApp:
             "Pasta de Imagens Base:",
             'batch_image',
             lambda: self.select_folder('batch_image', "Selecione a Pasta de Imagens Base"),
-            hint_text="Obrigatória",
+            hint_text="⚠️ Necessária para montar cada vídeo do lote a partir das imagens.",
         )
         self._create_file_input(
             self.batch_image_inputs_frame,
@@ -405,7 +405,7 @@ class VideoEditorApp:
             "Pasta de Narrações (Áudio):",
             'batch_audio',
             lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
-            hint_text="Compartilhada · Opcional",
+            hint_text="ℹ️ Usada por todos os vídeos; forneça apenas se quiser narrar.",
         )
         self._create_file_input(
             self.batch_image_inputs_frame,
@@ -413,7 +413,7 @@ class VideoEditorApp:
             "Pasta de Legendas (SRT):",
             'batch_srt',
             lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
-            hint_text="Compartilhada · Opcional",
+            hint_text="ℹ️ Usada por todos os vídeos; importe apenas se já tiver legendas prontas.",
         )
 
         self.batch_mixed_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_mixed_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_mixed_inputs_frame.columnconfigure(0, weight=1)
@@ -423,7 +423,7 @@ class VideoEditorApp:
             "Pasta de Mídia Base (Vídeos/Imagens):",
             'batch_mixed_media_folder',
             lambda: self.select_folder('batch_mixed_media_folder', "Selecione a Pasta de Mídia Base (Vídeos/Imagens)"),
-            hint_text="Obrigatória",
+            hint_text="⚠️ Necessária para processar cada mídia do lote (vídeos ou imagens).",
         )
         self._create_file_input(
             self.batch_mixed_inputs_frame,
@@ -431,7 +431,7 @@ class VideoEditorApp:
             "Pasta de Narrações (Áudio):",
             'batch_audio',
             lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
-            hint_text="Compartilhada · Opcional",
+            hint_text="ℹ️ Usada por todos os vídeos; forneça apenas se quiser narrar.",
         )
         self._create_file_input(
             self.batch_mixed_inputs_frame,
@@ -439,7 +439,7 @@ class VideoEditorApp:
             "Pasta de Legendas (SRT):",
             'batch_srt',
             lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
-            hint_text="Compartilhada · Opcional",
+            hint_text="ℹ️ Usada por todos os vídeos; importe apenas se já tiver legendas prontas.",
         )
 
         self.batch_hierarchical_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_hierarchical_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_hierarchical_inputs_frame.columnconfigure(0, weight=1)
@@ -449,7 +449,7 @@ class VideoEditorApp:
             "Pasta Raiz do Lote:",
             'batch_root',
             lambda: self.select_folder('batch_root', "Selecione a Pasta Raiz do Lote com as subpastas numéricas"),
-            hint_text="Obrigatória",
+            hint_text="⚠️ Necessária: cada subpasta numerada vira um vídeo independente.",
         )
         self._create_file_input(
             self.batch_hierarchical_inputs_frame,
@@ -457,7 +457,7 @@ class VideoEditorApp:
             "Biblioteca de Vídeos/Imagens:",
             'batch_image',
             lambda: self.select_folder('batch_image', "Selecione a Biblioteca de Vídeos/Imagens (Compartilhada)"),
-            hint_text="Compartilhada · Legendas buscadas automaticamente",
+            hint_text="ℹ️ Biblioteca compartilhada para todos os vídeos; as legendas são buscadas automaticamente.",
         )
         
         # --- Pasta de Saída (RESTAURADA) ---
@@ -1209,13 +1209,17 @@ class VideoEditorApp:
         )
         select_button.pack(side=LEFT)
         if hint_text:
+            hint_style = "info"
+            normalized_hint = hint_text.lower()
+            if "⚠️" in hint_text or "necessária" in normalized_hint or "obrigatória" in normalized_hint:
+                hint_style = "warning"
             ttk.Label(
                 frame,
                 text=hint_text,
                 anchor='w',
                 justify='left',
                 wraplength=350,
-                bootstyle="secondary",
+                bootstyle=hint_style,
             ).grid(row=1, column=0, columnspan=3, sticky="w", padx=(0, 10), pady=(2, 0))
         if var_key in ['png_overlay', 'effect_overlay', 'presenter_video']:
             clear_cmd = lambda: (self.path_vars[var_key].set(''), self.on_png_settings_change() if var_key == 'png_overlay' else self.on_presenter_settings_change())
