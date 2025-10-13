@@ -68,15 +68,15 @@ def _run_batch_video_processing(params: Dict[str, Any], progress_queue: Queue, c
     }
 
     if not audio_folder or not os.path.isdir(audio_folder):
-        progress_queue.put(("status", "Erro: Pasta de áudios do lote inválida.", "error"))
+        progress_queue.put(("status", "Erro: Pasta de Narrações (Áudio) do lote inválida.", "error"))
         return False
     if not video_parent_folder or not os.path.isdir(video_parent_folder):
-        progress_queue.put(("status", "Erro: Pasta de vídeos do lote inválida.", "error"))
+        progress_queue.put(("status", "Erro: Pasta de Vídeos Base do lote inválida.", "error"))
         return False
 
     audio_files = sorted([f for f in os.listdir(audio_folder) if os.path.isfile(os.path.join(audio_folder, f)) and f.lower().endswith(('.mp3', '.wav', '.aac'))])
     if not audio_files:
-        progress_queue.put(("status", "Erro: Nenhum arquivo de áudio encontrado na pasta de lote.", "error"))
+        progress_queue.put(("status", "Erro: Nenhum arquivo de narração (áudio) encontrado na pasta de lote.", "error"))
         return False
 
     available_music_files: List[str] = []
@@ -200,15 +200,15 @@ def _run_batch_image_processing(params: Dict[str, Any], progress_queue: Queue, c
     music_folder = params.get('music_folder_path')
 
     if not audio_folder or not os.path.isdir(audio_folder):
-        progress_queue.put(("status", "Erro: Pasta de áudios do lote inválida.", "error"))
+        progress_queue.put(("status", "Erro: Pasta de Narrações (Áudio) do lote inválida.", "error"))
         return False
     if not image_folder or not os.path.isdir(image_folder):
-        progress_queue.put(("status", "Erro: Pasta de imagens do lote inválida.", "error"))
+        progress_queue.put(("status", "Erro: Pasta de Imagens Base do lote inválida.", "error"))
         return False
 
     audio_files = sorted([f for f in os.listdir(audio_folder) if os.path.isfile(os.path.join(audio_folder, f)) and f.lower().endswith(('.mp3', '.wav', '.aac'))])
     if not audio_files:
-        progress_queue.put(("status", "Erro: Nenhum arquivo de áudio encontrado na pasta de lote.", "error"))
+        progress_queue.put(("status", "Erro: Nenhum arquivo de narração (áudio) encontrado na pasta de lote.", "error"))
         return False
 
     supported_ext = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
@@ -260,7 +260,7 @@ def _run_batch_image_processing(params: Dict[str, Any], progress_queue: Queue, c
         if cancel_event.is_set():
             return False
 
-        progress_queue.put(("status", f"[{log_prefix}] Adicionando áudios e legendas...", "info"))
+        progress_queue.put(("status", f"[{log_prefix}] Adicionando narrações (áudio) e legendas...", "info"))
 
         subtitle_file = None
         if srt_folder and os.path.isdir(srt_folder):
@@ -325,13 +325,13 @@ def _run_batch_mixed_processing(params: Dict[str, Any], progress_queue: Queue, c
     music_folder = params.get('music_folder_path')
 
     if not audio_folder or not os.path.isdir(audio_folder):
-        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Pasta de áudios do lote inválida.", "error"))
+        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Pasta de Narrações (Áudio) do lote inválida.", "error"))
         return False
     if not mixed_media_folder or not os.path.isdir(mixed_media_folder):
-        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Pasta de mídia (vídeos/imagens) inválida.", "error"))
+        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Pasta de Mídia Base (Vídeos/Imagens) inválida.", "error"))
         return False
 
-    progress_queue.put(("status", f"[{log_prefix_main}] Analisando pasta de mídia para criar vídeo base...", "info"))
+    progress_queue.put(("status", f"[{log_prefix_main}] Analisando Pasta de Mídia Base (Vídeos/Imagens) para criar vídeo base...", "info"))
     all_files = list(Path(mixed_media_folder).iterdir())
     supported_img_ext = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
     supported_vid_ext = ('.mp4', '.mov', '.mkv', '.avi')
@@ -339,7 +339,7 @@ def _run_batch_mixed_processing(params: Dict[str, Any], progress_queue: Queue, c
     videos = sorted([p for p in all_files if p.is_file() and p.suffix.lower() in supported_vid_ext])
 
     if not images and not videos:
-        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Nenhuma imagem ou vídeo encontrado em {mixed_media_folder}", "error"))
+        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Nenhuma mídia encontrada na Pasta de Mídia Base: {mixed_media_folder}", "error"))
         return False
     progress_queue.put(("status", f"[{log_prefix_main}] Encontrados {len(videos)} vídeos e {len(images)} imagens.", "info"))
 
@@ -406,7 +406,7 @@ def _run_batch_mixed_processing(params: Dict[str, Any], progress_queue: Queue, c
 
     audio_files = sorted([f for f in os.listdir(audio_folder) if os.path.isfile(os.path.join(audio_folder, f)) and f.lower().endswith(('.mp3', '.wav', '.aac'))])
     if not audio_files:
-        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Nenhum arquivo de áudio encontrado.", "error"))
+        progress_queue.put(("status", f"[{log_prefix_main}] Erro: Nenhum arquivo de narração (áudio) encontrado.", "error"))
         return False
 
     available_music_files: List[str] = []
@@ -489,13 +489,13 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
     music_folder = params.get('music_folder_path')
 
     if not root_folder or not os.path.isdir(root_folder):
-        progress_queue.put(("status", "Erro: Pasta Raiz do lote inválida.", "error"))
+        progress_queue.put(("status", "Erro: Pasta Raiz do Lote inválida.", "error"))
         return False
     if not media_folder or not os.path.isdir(media_folder):
-        progress_queue.put(("status", "Erro: Pasta de mídia do lote inválida.", "error"))
+        progress_queue.put(("status", "Erro: Biblioteca de Vídeos/Imagens (Compartilhada) inválida.", "error"))
         return False
 
-    progress_queue.put(("status", f"Buscando arquivos de áudio em subpastas de '{Path(root_folder).name}'...", "info"))
+    progress_queue.put(("status", f"Buscando arquivos de narração (áudio) em subpastas de '{Path(root_folder).name}'...", "info"))
     audio_files_to_process: List[Path] = []
     try:
         audio_ext = ('.mp3', '.wav', '.aac')
@@ -505,13 +505,13 @@ def _run_hierarchical_batch_image_processing(params: Dict[str, Any], progress_qu
 
         audio_files_to_process.sort()
     except OSError as e:
-        progress_queue.put(("status", f"Erro ao buscar arquivos de áudio: {e}", "error"))
+        progress_queue.put(("status", f"Erro ao buscar arquivos de narração (áudio): {e}", "error"))
         return False
 
     if not audio_files_to_process:
-        progress_queue.put(("status", "Erro: Nenhum arquivo de áudio encontrado nas subpastas.", "error"))
+        progress_queue.put(("status", "Erro: Nenhum arquivo de narração (áudio) encontrado nas subpastas.", "error"))
         return False
-    progress_queue.put(("status", f"Encontrados {len(audio_files_to_process)} arquivos de áudio para processar.", "info"))
+    progress_queue.put(("status", f"Encontrados {len(audio_files_to_process)} arquivos de narração (áudio) para processar.", "info"))
 
     media_path = Path(media_folder)
     supported_img_ext = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')

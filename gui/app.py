@@ -288,30 +288,114 @@ class VideoEditorApp:
         inputs_container.columnconfigure(0, weight=1)
 
         self.single_inputs_frame = ttk.Frame(inputs_container); self.single_inputs_frame.grid(row=0, column=0, sticky="ew"); self.single_inputs_frame.columnconfigure(0, weight=1)
-        self.media_path_label_widget = self._create_file_input(self.single_inputs_frame, 0, "Mídia Principal:", 'media_single', self.select_media_single)
-        self._create_file_input(self.single_inputs_frame, 1, "Narração (Áudio):", 'narration_single', lambda: self.select_file('narration_single', "Selecione a Narração", SUPPORTED_NARRATION_FT))
-        self._create_file_input(self.single_inputs_frame, 2, "Legenda (SRT):", 'subtitle_single', lambda: self.select_file('subtitle_single', "Selecione a Legenda", SUPPORTED_SUBTITLE_FT))
+        self.media_path_label_widget = self._create_file_input(
+            self.single_inputs_frame,
+            0,
+            "Arquivo de Vídeo Base (Obrigatório):",
+            'media_single',
+            self.select_media_single,
+        )
+        self._create_file_input(
+            self.single_inputs_frame,
+            1,
+            "Arquivo de Narração (Áudio) (Opcional):",
+            'narration_single',
+            lambda: self.select_file('narration_single', "Selecione o Arquivo de Narração (Áudio)", SUPPORTED_NARRATION_FT),
+        )
+        self._create_file_input(
+            self.single_inputs_frame,
+            2,
+            "Arquivo de Legenda (SRT) (Opcional):",
+            'subtitle_single',
+            lambda: self.select_file('subtitle_single', "Selecione o Arquivo de Legenda (SRT)", SUPPORTED_SUBTITLE_FT),
+        )
 
         self.batch_inputs_frame = ttk.Frame(inputs_container); self.batch_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_inputs_frame.columnconfigure(0, weight=1)
 
         self.batch_video_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_video_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_video_inputs_frame.columnconfigure(0, weight=1)
-        self._create_file_input(self.batch_video_inputs_frame, 0, "Pasta de Vídeos:", 'batch_video', lambda: self.select_folder('batch_video', "Selecione a Pasta de Vídeos"))
-        self._create_file_input(self.batch_video_inputs_frame, 1, "Pasta de Áudios:", 'batch_audio', lambda: self.select_folder('batch_audio', "Selecione a Pasta de Áudios"))
-        self._create_file_input(self.batch_video_inputs_frame, 2, "Pasta de Legendas:", 'batch_srt', lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas"))
+        self._create_file_input(
+            self.batch_video_inputs_frame,
+            0,
+            "Pasta de Vídeos Base (Obrigatória):",
+            'batch_video',
+            lambda: self.select_folder('batch_video', "Selecione a Pasta de Vídeos Base"),
+        )
+        self._create_file_input(
+            self.batch_video_inputs_frame,
+            1,
+            "Pasta de Narrações (Áudio) (Compartilhada · Opcional):",
+            'batch_audio',
+            lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
+        )
+        self._create_file_input(
+            self.batch_video_inputs_frame,
+            2,
+            "Pasta de Legendas (SRT) (Compartilhada · Opcional):",
+            'batch_srt',
+            lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
+        )
 
         self.batch_image_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_image_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_image_inputs_frame.columnconfigure(0, weight=1)
-        self._create_file_input(self.batch_image_inputs_frame, 0, "Pasta de Imagens:", 'batch_image', lambda: self.select_folder('batch_image', "Selecione a Pasta de Imagens"))
-        self._create_file_input(self.batch_image_inputs_frame, 1, "Pasta de Áudios:", 'batch_audio', lambda: self.select_folder('batch_audio', "Selecione a Pasta de Áudios"))
-        self._create_file_input(self.batch_image_inputs_frame, 2, "Pasta de Legendas:", 'batch_srt', lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas"))
+        self._create_file_input(
+            self.batch_image_inputs_frame,
+            0,
+            "Pasta de Imagens Base (Obrigatória):",
+            'batch_image',
+            lambda: self.select_folder('batch_image', "Selecione a Pasta de Imagens Base"),
+        )
+        self._create_file_input(
+            self.batch_image_inputs_frame,
+            1,
+            "Pasta de Narrações (Áudio) (Compartilhada · Opcional):",
+            'batch_audio',
+            lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
+        )
+        self._create_file_input(
+            self.batch_image_inputs_frame,
+            2,
+            "Pasta de Legendas (SRT) (Compartilhada · Opcional):",
+            'batch_srt',
+            lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
+        )
 
         self.batch_mixed_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_mixed_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_mixed_inputs_frame.columnconfigure(0, weight=1)
-        self._create_file_input(self.batch_mixed_inputs_frame, 0, "Pasta de Mídia:", 'batch_mixed_media_folder', lambda: self.select_folder('batch_mixed_media_folder', "Selecione a Pasta com Vídeos e Imagens"))
-        self._create_file_input(self.batch_mixed_inputs_frame, 1, "Pasta de Áudios:", 'batch_audio', lambda: self.select_folder('batch_audio', "Selecione a Pasta de Áudios"))
-        self._create_file_input(self.batch_mixed_inputs_frame, 2, "Pasta de Legendas:", 'batch_srt', lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas"))
+        self._create_file_input(
+            self.batch_mixed_inputs_frame,
+            0,
+            "Pasta de Mídia Base (Vídeos/Imagens) (Obrigatória):",
+            'batch_mixed_media_folder',
+            lambda: self.select_folder('batch_mixed_media_folder', "Selecione a Pasta de Mídia Base (Vídeos/Imagens)"),
+        )
+        self._create_file_input(
+            self.batch_mixed_inputs_frame,
+            1,
+            "Pasta de Narrações (Áudio) (Compartilhada · Opcional):",
+            'batch_audio',
+            lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
+        )
+        self._create_file_input(
+            self.batch_mixed_inputs_frame,
+            2,
+            "Pasta de Legendas (SRT) (Compartilhada · Opcional):",
+            'batch_srt',
+            lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
+        )
 
         self.batch_hierarchical_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_hierarchical_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_hierarchical_inputs_frame.columnconfigure(0, weight=1)
-        self._create_file_input(self.batch_hierarchical_inputs_frame, 0, "Pasta Raiz:", 'batch_root', lambda: self.select_folder('batch_root', "Selecione a Pasta Raiz com as subpastas numéricas"))
-        self._create_file_input(self.batch_hierarchical_inputs_frame, 1, "Pasta de Vídeos:", 'batch_image', lambda: self.select_folder('batch_image', "Selecione a Pasta de Vídeos"))
+        self._create_file_input(
+            self.batch_hierarchical_inputs_frame,
+            0,
+            "Pasta Raiz do Lote (Obrigatória):",
+            'batch_root',
+            lambda: self.select_folder('batch_root', "Selecione a Pasta Raiz do Lote com as subpastas numéricas"),
+        )
+        self._create_file_input(
+            self.batch_hierarchical_inputs_frame,
+            1,
+            "Biblioteca de Vídeos/Imagens (Compartilhada · Legendas buscadas automaticamente):",
+            'batch_image',
+            lambda: self.select_folder('batch_image', "Selecione a Biblioteca de Vídeos/Imagens (Compartilhada)"),
+        )
         
         # --- Pasta de Saída (RESTAURADA) ---
         output_section = ttk.LabelFrame(tab, text=" Local de Saída ", padding=15)
@@ -1089,15 +1173,18 @@ class VideoEditorApp:
                 frame.grid_remove()
 
         if is_single_video or is_slideshow:
-            self.media_path_label_widget.winfo_children()[0].config(text="Pasta de Imagens:" if is_slideshow else "Ficheiro de Vídeo:")
+            label_text = "Pasta de Imagens (Slideshow) (Obrigatória):" if is_slideshow else "Arquivo de Vídeo Base (Obrigatório):"
+            self.media_path_label_widget.winfo_children()[0].config(text=label_text)
         self.notebook.tab(1, text="Editor: Vídeo & Slideshow" if is_any_slideshow else "Editor: Vídeo")
         if is_batch_image or is_batch_mixed: self.video_settings_section.grid_remove()
         else: self.video_settings_section.grid()
 
     def select_media_single(self):
         # ... (sem alterações) ...
-        if self.media_type.get() == "image_folder": self.select_folder('media_single', "Selecione a Pasta de Imagens")
-        else: self.select_file('media_single', "Selecione o Ficheiro de Vídeo", SUPPORTED_VIDEO_FT)
+        if self.media_type.get() == "image_folder":
+            self.select_folder('media_single', "Selecione a Pasta de Imagens (Slideshow)")
+        else:
+            self.select_file('media_single', "Selecione o Arquivo de Vídeo Base", SUPPORTED_VIDEO_FT)
 
     def select_file(self, var_key, title, filetypes, callback=None):
         # ... (sem alterações) ...
@@ -1254,12 +1341,12 @@ class VideoEditorApp:
         if not self.output_folder.get() or not os.path.isdir(self.output_folder.get()):
             Messagebox.show_error("Pasta de saída inválida.", "Erro de Saída", parent=self.root); return False
         mode = self.media_type.get()
-        if mode == "video_single" and not os.path.isfile(self.media_path_single.get()): Messagebox.show_error("Ficheiro de vídeo principal inválido.", "Erro de Entrada", parent=self.root); return False
-        if mode == "image_folder" and not os.path.isdir(self.media_path_single.get()): Messagebox.show_error("Pasta de imagens inválida.", "Erro de Entrada", parent=self.root); return False
-        if mode == "batch_video" and (not os.path.isdir(self.batch_video_parent_folder.get()) or not os.path.isdir(self.batch_audio_folder.get())): Messagebox.show_error("Pastas de lote de vídeo inválidas.", "Erro de Entrada", parent=self.root); return False
-        if mode == "batch_image" and (not os.path.isdir(self.batch_image_parent_folder.get()) or not os.path.isdir(self.batch_audio_folder.get())): Messagebox.show_error("Pastas de lote de imagem inválidas.", "Erro de Entrada", parent=self.root); return False
-        if mode == "batch_mixed" and (not os.path.isdir(self.batch_mixed_media_folder.get()) or not os.path.isdir(self.batch_audio_folder.get())): Messagebox.show_error("As pastas de Mídia e de Áudios devem ser válidas para o lote misto.", "Erro de Entrada", parent=self.root); return False
-        if mode == "batch_image_hierarchical" and (not os.path.isdir(self.batch_root_folder.get()) or not os.path.isdir(self.batch_image_parent_folder.get())): Messagebox.show_error("As pastas Raiz e de Imagens devem ser válidas para o lote hierárquico.", "Erro de Entrada", parent=self.root); return False
+        if mode == "video_single" and not os.path.isfile(self.media_path_single.get()): Messagebox.show_error("Arquivo de Vídeo Base inválido.", "Erro de Entrada", parent=self.root); return False
+        if mode == "image_folder" and not os.path.isdir(self.media_path_single.get()): Messagebox.show_error("Pasta de Imagens (Slideshow) inválida.", "Erro de Entrada", parent=self.root); return False
+        if mode == "batch_video" and (not os.path.isdir(self.batch_video_parent_folder.get()) or not os.path.isdir(self.batch_audio_folder.get())): Messagebox.show_error("As pastas de Vídeos Base e de Narrações (Áudio) devem ser válidas para o lote de vídeos.", "Erro de Entrada", parent=self.root); return False
+        if mode == "batch_image" and (not os.path.isdir(self.batch_image_parent_folder.get()) or not os.path.isdir(self.batch_audio_folder.get())): Messagebox.show_error("As pastas de Imagens Base e de Narrações (Áudio) devem ser válidas para o lote de imagens.", "Erro de Entrada", parent=self.root); return False
+        if mode == "batch_mixed" and (not os.path.isdir(self.batch_mixed_media_folder.get()) or not os.path.isdir(self.batch_audio_folder.get())): Messagebox.show_error("As pastas de Mídia Base e de Narrações (Áudio) devem ser válidas para o lote misto.", "Erro de Entrada", parent=self.root); return False
+        if mode == "batch_image_hierarchical" and (not os.path.isdir(self.batch_root_folder.get()) or not os.path.isdir(self.batch_image_parent_folder.get())): Messagebox.show_error("As pastas Raiz do Lote e a Biblioteca de Vídeos/Imagens devem ser válidas para o lote hierárquico.", "Erro de Entrada", parent=self.root); return False
         logger.info("Entradas do editor validadas com sucesso."); return True
 
     def start_processing_controller(self):
