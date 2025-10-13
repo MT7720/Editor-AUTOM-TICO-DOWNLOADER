@@ -43,3 +43,4 @@ Para equipas que pretendem continuar a gerir clientes e políticas através do K
 
 - **Editor: Vídeo** – ajuste a resolução, codec, comportamento do slideshow e configure o encerramento (fade out) que escurece a imagem enquanto reduz o áudio.
 - **Editor: Áudio** – concentre-se apenas nos volumes da narração e da trilha sonora, sem controles de encerramento duplicados.
+- **Editor: Introdução** – redija a mensagem inicial, escolha a fonte preferida, ative o negrito quando quiser dar mais presença ao texto e deixe o aplicativo traduzir automaticamente para cada idioma.

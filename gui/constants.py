@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Dict
 
+from shared import INTRO_FONT_CHOICES
+
 try:
     import video_processing_logic  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
@@ -141,4 +143,5 @@ __all__ = [
     "EFFECT_BLEND_MODES",
     "LANGUAGE_CODE_MAP",
     "APP_DATA_PATH",
+    "INTRO_FONT_CHOICES",
 ]
