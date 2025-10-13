@@ -1193,19 +1193,27 @@ class VideoEditorApp:
             self.license_status_label.config(text="Erro na licença", bootstyle="danger")
 
     def _create_file_input(self, parent, row, label_text, var_key, command):
+        button_column_width = 180
         frame = ttk.Frame(parent)
         frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
-        frame.columnconfigure(2, weight=0)
+        frame.columnconfigure(2, weight=0, minsize=button_column_width)
         ttk.Label(frame, text=label_text, anchor='w', justify='left', wraplength=350).grid(
             row=0, column=0, sticky="w", padx=(0, 10)
         )
         entry = ttk.Entry(frame, textvariable=self.path_vars[var_key], state="readonly")
         entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
-        button_container = ttk.Frame(frame)
+        button_container = ttk.Frame(frame, width=button_column_width)
         button_container.grid(row=0, column=2, sticky='e')
-        select_button = ttk.Button(button_container, text="Selecionar...", command=command, bootstyle="secondary-outline", width=12)
+        button_container.grid_propagate(False)
+        select_button = ttk.Button(
+            button_container,
+            text="Selecionar...",
+            command=command,
+            bootstyle="secondary",
+            width=12,
+        )
         select_button.pack(side=LEFT)
         if var_key in ['png_overlay', 'effect_overlay', 'presenter_video']:
             clear_cmd = lambda: (self.path_vars[var_key].set(''), self.on_png_settings_change() if var_key == 'png_overlay' else self.on_presenter_settings_change())
