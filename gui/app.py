@@ -275,11 +275,41 @@ class VideoEditorApp:
         self._mode_card_fonts_initialized = getattr(self, "_mode_card_fonts_initialized", False)
         if not self._mode_card_fonts_initialized:
             default_font = tkFont.nametofont("TkDefaultFont")
+            base_size = default_font.cget("size")
             self._mode_title_font = default_font.copy()
-            self._mode_title_font.configure(weight="bold")
+            self._mode_title_font.configure(size=base_size + 1, weight="bold")
             self._mode_description_font = default_font.copy()
-            self._mode_description_font.configure(size=max(default_font.cget("size") - 1, 9))
+            self._mode_description_font.configure(size=max(base_size - 1, 9))
+
+            style = ttk.Style()
+            neutral_text = "#adb5bd"
+            palette = getattr(style, "colors", None)
+            try:
+                if palette is not None:
+                    neutral_text = getattr(palette, "secondary", neutral_text)
+            except Exception:
+                neutral_text = "#adb5bd"
+
+            self._mode_description_color = neutral_text
             self._mode_card_fonts_initialized = True
+
+        style = ttk.Style()
+        neutral_text = getattr(self, "_mode_description_color", "#adb5bd")
+        style.configure("ModeTitle.TRadiobutton", font=self._mode_title_font)
+        style.configure("ModeDescription.TLabel", font=self._mode_description_font, foreground=neutral_text)
+        style.configure("ModeInfo.TLabel", font=self._mode_description_font, foreground=neutral_text)
+        style.configure(
+            "ModeCard.TFrame",
+            padding=12,
+            relief="ridge",
+            borderwidth=1,
+        )
+        style.configure(
+            "ModeCardSelected.TFrame",
+            padding=12,
+            relief="solid",
+            borderwidth=2,
+        )
 
         mode_options = [
             (
@@ -496,9 +526,8 @@ class VideoEditorApp:
         description: str,
     ) -> None:
         row, column = divmod(index, columns)
-        card = ttk.Frame(parent, padding=12, bootstyle="secondary")
+        card = ttk.Frame(parent, style="ModeCard.TFrame", bootstyle="secondary")
         card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
-        card.configure(borderwidth=1, relief="ridge")
         card.columnconfigure(0, weight=1)
 
         header_frame = ttk.Frame(card)
@@ -522,7 +551,7 @@ class VideoEditorApp:
             cursor="hand2",
             style="ModeInfo.TLabel",
         )
-        info_icon.grid(row=0, column=1, sticky="e", padx=(8, 0))
+        info_icon.grid(row=0, column=1, sticky="ne", padx=(8, 0))
 
         def _select_mode(event=None, *, button=radio):
             button.invoke()
@@ -532,13 +561,25 @@ class VideoEditorApp:
         header_frame.bind("<Button-1>", _select_mode)
         info_icon.bind("<Button-1>", _select_mode)
 
+        try:
+            total_columns = max(columns, 1)
+        except Exception:
+            total_columns = 1
+        available_width = max(self.root.winfo_width(), self.root.winfo_reqwidth())
+        wraplength = max(240, int(available_width / total_columns) - 60)
+
+        description_label = ttk.Label(
+            card,
+            text=description,
+            style="ModeDescription.TLabel",
+            wraplength=wraplength,
+            justify=LEFT,
+        )
+        description_label.grid(row=1, column=0, sticky="w", pady=(6, 0))
+
         ToolTip(info_icon, description)
 
         self._mode_option_cards[value] = card
-
-        style = ttk.Style()
-        style.configure("ModeTitle.TRadiobutton", font=self._mode_title_font)
-        style.configure("ModeInfo.TLabel", font=self._mode_description_font)
 
     def _on_mode_option_selected(self):
         self.update_ui_for_media_type()
@@ -548,9 +589,19 @@ class VideoEditorApp:
         current_mode = self.media_type.get()
         for value, card in getattr(self, "_mode_option_cards", {}).items():
             if value == current_mode:
-                card.configure(bootstyle="primary", borderwidth=2)
+                card.configure(
+                    style="ModeCardSelected.TFrame",
+                    bootstyle="primary",
+                    relief="solid",
+                    borderwidth=2,
+                )
             else:
-                card.configure(bootstyle="secondary", borderwidth=1)
+                card.configure(
+                    style="ModeCard.TFrame",
+                    bootstyle="secondary",
+                    relief="ridge",
+                    borderwidth=1,
+                )
 
     def _on_single_language_selected(self, event=None):
         display_value = self.single_language_display_var.get()
