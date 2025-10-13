@@ -1,6 +1,6 @@
 """Modular building blocks for the AUTOM TICO video processing pipeline."""
 
-from . import intro, final_pass, batch, utils, shared
+from . import intro, final_pass, batch, utils, shared, banner
 
 __all__ = [
     "intro",
@@ -8,4 +8,5 @@ __all__ = [
     "batch",
     "utils",
     "shared",
+    "banner",
 ]

@@ -4,12 +4,102 @@ from __future__ import annotations
 
 import os
 import tkinter as tk
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from PIL import Image, ImageTk
 
 from .constants import SUBTITLE_POSITIONS
 from .utils import logger
+from video_processing.banner import BannerRenderConfig, generate_banner_image
+
+
+class BannerPreview(tk.Canvas):
+    def __init__(self, parent: tk.Misc, **kwargs: Any) -> None:
+        super().__init__(parent, bg="#1a1a1a", **kwargs)
+        self._photo: Optional[ImageTk.PhotoImage] = None
+        self._last_params: Dict[str, Any] = {}
+        self.bind("<Configure>", self._on_resize)
+
+    def _on_resize(self, event: tk.Event[Any]) -> None:  # pragma: no cover - UI callback
+        if self._last_params:
+            try:
+                self.update_preview(**self._last_params)
+            except Exception as exc:  # pragma: no cover - defensive UI
+                logger.error("Erro ao atualizar preview da faixa após redimensionamento: %s", exc)
+
+    def update_preview(
+        self,
+        text: str,
+        use_gradient: bool,
+        solid_color: str,
+        gradient_start: str,
+        gradient_end: str,
+        font_color: str,
+        enabled: bool,
+        video_resolution: Tuple[int, int],
+        font_path: Optional[str] = None,
+    ) -> None:
+        self._last_params = {
+            'text': text,
+            'use_gradient': use_gradient,
+            'solid_color': solid_color,
+            'gradient_start': gradient_start,
+            'gradient_end': gradient_end,
+            'font_color': font_color,
+            'enabled': enabled,
+            'video_resolution': video_resolution,
+            'font_path': font_path,
+        }
+
+        canvas_w, canvas_h = max(1, self.winfo_width()), max(1, self.winfo_height())
+        self.delete("all")
+        self.create_rectangle(0, 0, canvas_w, canvas_h, fill="#1a1a1a", outline="")
+
+        if not enabled:
+            self.create_text(
+                canvas_w / 2,
+                canvas_h / 2,
+                text="Faixa desativada",
+                fill="#BBBBBB",
+                font=("Segoe UI", 12, "italic"),
+            )
+            return
+
+        try:
+            video_w, video_h = video_resolution
+            config = BannerRenderConfig(
+                text=text or "",
+                video_width=max(1, int(video_w)),
+                video_height=max(1, int(video_h)),
+                use_gradient=use_gradient,
+                solid_color=solid_color or "#333333",
+                gradient_start=gradient_start or solid_color or "#333333",
+                gradient_end=gradient_end or solid_color or "#333333",
+                font_color=font_color or "#FFFFFF",
+                font_path=font_path,
+            )
+            banner_image = generate_banner_image(config)
+        except Exception as exc:
+            logger.error("Erro ao gerar pré-visualização da faixa: %s", exc)
+            self.create_text(
+                canvas_w / 2,
+                canvas_h / 2,
+                text="Erro na pré-visualização",
+                fill="#E57373",
+                font=("Segoe UI", 12, "bold"),
+            )
+            return
+
+        ratio = canvas_w / float(config.video_width)
+        preview_height = max(1, int(round(banner_image.height * ratio)))
+        preview_image = banner_image.resize((canvas_w, preview_height), Image.Resampling.LANCZOS)
+
+        composed = Image.new("RGBA", (canvas_w, canvas_h), (26, 26, 26, 255))
+        y_offset = max(0, (canvas_h - preview_height) // 2)
+        composed.paste(preview_image, (0, y_offset), preview_image)
+
+        self._photo = ImageTk.PhotoImage(composed)
+        self.create_image(0, 0, image=self._photo, anchor="nw")
 
 
 class SubtitlePreview(tk.Canvas):

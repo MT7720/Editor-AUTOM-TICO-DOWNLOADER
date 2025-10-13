@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from queue import Queue
 from typing import Any, Dict, List, Optional, Tuple
 import threading
 
-from .intro import _maybe_create_intro_clip, _combine_intro_with_main
+from .banner import BannerRenderConfig, generate_banner_image
+from .intro import _maybe_create_intro_clip, _combine_intro_with_main, _prepare_intro_text
 from .shared import (
     _escape_ffmpeg_path,
     _execute_ffmpeg,
@@ -19,6 +21,88 @@ from .shared import (
 from .utils import _parse_resolution, _create_styled_ass_from_srt
 
 __all__ = ["_perform_final_pass"]
+
+
+def _prepare_banner_overlay(
+    params: Dict[str, Any],
+    temp_dir: str,
+    resolution: Tuple[int, int],
+    total_duration: float,
+) -> Optional[Dict[str, Any]]:
+    if not params.get('banner_enabled'):
+        return None
+
+    translation_payload = {
+        'intro_enabled': params.get('banner_enabled'),
+        'intro_default_text': params.get('banner_default_text'),
+        'intro_texts': params.get('banner_texts'),
+        'intro_language_code': params.get('banner_language_code', 'auto'),
+        'current_language_code': params.get('current_language_code'),
+    }
+
+    banner_selection = _prepare_intro_text(
+        translation_payload,
+        language_hint=params.get('current_language_code'),
+    )
+
+    if not banner_selection:
+        return None
+
+    final_text = str(banner_selection.get('text', '')).strip()
+    if not final_text:
+        return None
+
+    params['banner_final_text'] = final_text
+    params['banner_final_language_code'] = banner_selection.get('language_code')
+    params['banner_final_language_label'] = banner_selection.get('language_label')
+
+    try:
+        duration = float(params.get('banner_duration', 5.0))
+    except (TypeError, ValueError):
+        duration = 5.0
+    duration = max(0.2, min(duration, max(0.2, float(total_duration or 0))))
+
+    video_w, video_h = resolution
+    subtitle_style = params.get('subtitle_style') or {}
+    font_path = None
+    if isinstance(subtitle_style, dict):
+        font_path = subtitle_style.get('font_file')
+
+    render_config = BannerRenderConfig(
+        text=final_text,
+        video_width=max(1, int(video_w)),
+        video_height=max(1, int(video_h)),
+        use_gradient=bool(params.get('banner_use_gradient')), 
+        solid_color=str(params.get('banner_solid_color') or '#FFB347'),
+        gradient_start=str(params.get('banner_gradient_start') or params.get('banner_solid_color') or '#FF512F'),
+        gradient_end=str(params.get('banner_gradient_end') or params.get('banner_solid_color') or '#DD2476'),
+        font_color=str(params.get('banner_font_color') or '#FFFFFF'),
+        font_path=font_path if font_path and os.path.isfile(font_path) else None,
+    )
+
+    try:
+        banner_image = generate_banner_image(render_config)
+    except Exception as exc:
+        logger.error("Falha ao gerar imagem da faixa: %s", exc, exc_info=True)
+        return None
+
+    os.makedirs(temp_dir, exist_ok=True)
+    overlay_path = os.path.join(temp_dir, f"banner_overlay_{int(time.time() * 1000)}.png")
+    try:
+        banner_image.save(overlay_path, "PNG")
+    except Exception as exc:
+        logger.error("Falha ao guardar imagem da faixa: %s", exc, exc_info=True)
+        return None
+
+    params['banner_overlay_path'] = overlay_path
+    params['banner_overlay_height'] = banner_image.height
+    params['banner_overlay_duration'] = duration
+
+    return {
+        'path': overlay_path,
+        'duration': duration,
+        'height': banner_image.height,
+    }
 
 
 def _perform_final_pass(
@@ -73,6 +157,7 @@ def _perform_final_pass(
     map_args: List[str] = []
     input_map: Dict[str, int] = {}
     current_idx = 0
+    banner_overlay_info: Optional[Dict[str, Any]] = None
 
     inputs.extend(["-i", base_video_path])
     input_map['main_video'] = current_idx
@@ -92,6 +177,13 @@ def _perform_final_pass(
         input_map['presenter'] = current_idx
         current_idx += 1
 
+    W, H = _parse_resolution(params['resolution'])
+    banner_overlay_info = _prepare_banner_overlay(params, temp_dir, (W, H), total_duration)
+    if banner_overlay_info and os.path.isfile(banner_overlay_info['path']):
+        inputs.extend(["-loop", "1", "-i", banner_overlay_info['path']])
+        input_map['banner'] = current_idx
+        current_idx += 1
+
     if narration_path and os.path.isfile(narration_path):
         inputs.extend(["-i", narration_path])
         input_map['narration'] = current_idx
@@ -102,8 +194,6 @@ def _perform_final_pass(
         current_idx += 1
 
     progress_queue.put(("status", f"[{log_prefix}] Construindo filtros de vídeo...", "info"))
-
-    W, H = _parse_resolution(params['resolution'])
     intro_info = _maybe_create_intro_clip(params, temp_dir, (W, H), progress_queue, cancel_event, log_prefix)
     if intro_info:
         label = intro_info.get('language_label') or "Padrão"
@@ -168,6 +258,23 @@ def _perform_final_pass(
         filter_complex_parts.append(f"[{input_map['png']}:v]format=rgba,colorchannelmixer=aa={opacity},scale=w='iw*{scale}':h=-1[png_scaled]")
         filter_complex_parts.append(f"{last_video_stream}[png_scaled]overlay={position}:format=auto[v_png]")
         last_video_stream = "[v_png]"
+
+    if 'banner' in input_map and banner_overlay_info:
+        try:
+            banner_duration = float(params.get('banner_overlay_duration', banner_overlay_info.get('duration', 0)))
+        except (TypeError, ValueError):
+            banner_duration = banner_overlay_info.get('duration', 0) or 0.2
+        banner_duration = max(0.2, banner_duration)
+        filter_complex_parts.append(f"[{input_map['banner']}:v]format=rgba[banner_rgba]")
+        filter_complex_parts.append(
+            f"{last_video_stream}[banner_rgba]overlay=0:0:enable='between(t,0,{banner_duration:.3f})':format=auto[v_banner]"
+        )
+        last_video_stream = "[v_banner]"
+        progress_queue.put((
+            "status",
+            f"[{log_prefix}] Faixa sobreposta por {banner_duration:.1f}s.",
+            "info",
+        ))
 
     if params.get('add_fade_out'):
         fade_duration = max(0.0, float(params.get('fade_out_duration', 10)))
