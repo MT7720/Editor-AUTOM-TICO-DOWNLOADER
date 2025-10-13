@@ -343,6 +343,7 @@ class VideoEditorApp:
             "Arquivo de Vídeo Base (Obrigatório):",
             'media_single',
             self.select_media_single,
+            hint_text=None,
         )
         self._create_file_input(
             self.single_inputs_frame,
@@ -350,6 +351,7 @@ class VideoEditorApp:
             "Arquivo de Narração (Áudio) (Opcional):",
             'narration_single',
             lambda: self.select_file('narration_single', "Selecione o Arquivo de Narração (Áudio)", SUPPORTED_NARRATION_FT),
+            hint_text=None,
         )
         self._create_file_input(
             self.single_inputs_frame,
@@ -357,6 +359,7 @@ class VideoEditorApp:
             "Arquivo de Legenda (SRT) (Opcional):",
             'subtitle_single',
             lambda: self.select_file('subtitle_single', "Selecione o Arquivo de Legenda (SRT)", SUPPORTED_SUBTITLE_FT),
+            hint_text=None,
         )
 
         self.batch_inputs_frame = ttk.Frame(inputs_container); self.batch_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_inputs_frame.columnconfigure(0, weight=1)
@@ -365,100 +368,111 @@ class VideoEditorApp:
         self._create_file_input(
             self.batch_video_inputs_frame,
             0,
-            "Pasta de Vídeos Base (Obrigatória):",
+            "Pasta de Vídeos Base:",
             'batch_video',
             lambda: self.select_folder('batch_video', "Selecione a Pasta de Vídeos Base"),
+            hint_text="Obrigatória",
         )
         self._create_file_input(
             self.batch_video_inputs_frame,
             1,
-            "Pasta de Narrações (Áudio) (Compartilhada · Opcional):",
+            "Pasta de Narrações (Áudio):",
             'batch_audio',
             lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
+            hint_text="Compartilhada · Opcional",
         )
         self._create_file_input(
             self.batch_video_inputs_frame,
             2,
-            "Pasta de Legendas (SRT) (Compartilhada · Opcional):",
+            "Pasta de Legendas (SRT):",
             'batch_srt',
             lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
+            hint_text="Compartilhada · Opcional",
         )
 
         self.batch_image_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_image_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_image_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(
             self.batch_image_inputs_frame,
             0,
-            "Pasta de Imagens Base (Obrigatória):",
+            "Pasta de Imagens Base:",
             'batch_image',
             lambda: self.select_folder('batch_image', "Selecione a Pasta de Imagens Base"),
+            hint_text="Obrigatória",
         )
         self._create_file_input(
             self.batch_image_inputs_frame,
             1,
-            "Pasta de Narrações (Áudio) (Compartilhada · Opcional):",
+            "Pasta de Narrações (Áudio):",
             'batch_audio',
             lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
+            hint_text="Compartilhada · Opcional",
         )
         self._create_file_input(
             self.batch_image_inputs_frame,
             2,
-            "Pasta de Legendas (SRT) (Compartilhada · Opcional):",
+            "Pasta de Legendas (SRT):",
             'batch_srt',
             lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
+            hint_text="Compartilhada · Opcional",
         )
 
         self.batch_mixed_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_mixed_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_mixed_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(
             self.batch_mixed_inputs_frame,
             0,
-            "Pasta de Mídia Base (Vídeos/Imagens) (Obrigatória):",
+            "Pasta de Mídia Base (Vídeos/Imagens):",
             'batch_mixed_media_folder',
             lambda: self.select_folder('batch_mixed_media_folder', "Selecione a Pasta de Mídia Base (Vídeos/Imagens)"),
+            hint_text="Obrigatória",
         )
         self._create_file_input(
             self.batch_mixed_inputs_frame,
             1,
-            "Pasta de Narrações (Áudio) (Compartilhada · Opcional):",
+            "Pasta de Narrações (Áudio):",
             'batch_audio',
             lambda: self.select_folder('batch_audio', "Selecione a Pasta de Narrações (Áudio)"),
+            hint_text="Compartilhada · Opcional",
         )
         self._create_file_input(
             self.batch_mixed_inputs_frame,
             2,
-            "Pasta de Legendas (SRT) (Compartilhada · Opcional):",
+            "Pasta de Legendas (SRT):",
             'batch_srt',
             lambda: self.select_folder('batch_srt', "Selecione a Pasta de Legendas (SRT)"),
+            hint_text="Compartilhada · Opcional",
         )
 
         self.batch_hierarchical_inputs_frame = ttk.Frame(self.batch_inputs_frame); self.batch_hierarchical_inputs_frame.grid(row=0, column=0, sticky="ew"); self.batch_hierarchical_inputs_frame.columnconfigure(0, weight=1)
         self._create_file_input(
             self.batch_hierarchical_inputs_frame,
             0,
-            "Pasta Raiz do Lote (Obrigatória):",
+            "Pasta Raiz do Lote:",
             'batch_root',
             lambda: self.select_folder('batch_root', "Selecione a Pasta Raiz do Lote com as subpastas numéricas"),
+            hint_text="Obrigatória",
         )
         self._create_file_input(
             self.batch_hierarchical_inputs_frame,
             1,
-            "Biblioteca de Vídeos/Imagens (Compartilhada · Legendas buscadas automaticamente):",
+            "Biblioteca de Vídeos/Imagens:",
             'batch_image',
             lambda: self.select_folder('batch_image', "Selecione a Biblioteca de Vídeos/Imagens (Compartilhada)"),
+            hint_text="Compartilhada · Legendas buscadas automaticamente",
         )
         
         # --- Pasta de Saída (RESTAURADA) ---
         output_section = ttk.LabelFrame(tab, text=" Local de Saída ", padding=15)
         output_section.grid(row=2, column=0, sticky="ew", pady=(0, 15))
         output_section.columnconfigure(0, weight=1)
-        self._create_file_input(output_section, 0, "Salvar em:", 'output', lambda: self.select_folder('output', "Selecione a Pasta de Saída"))
+        self._create_file_input(output_section, 0, "Salvar em:", 'output', lambda: self.select_folder('output', "Selecione a Pasta de Saída"), hint_text=None)
 
         # --- Música de Fundo ---
         music_section = ttk.LabelFrame(tab, text=" Música de Fundo (Opcional) ", padding=15)
         music_section.grid(row=3, column=0, sticky="ew", pady=(0, 15))
         music_section.columnconfigure(0, weight=1)
-        self.music_file_frame = self._create_file_input(music_section, 0, "Ficheiro de Música:", 'music_single', lambda: self.select_file('music_single', "Selecione a Música", SUPPORTED_MUSIC_FT))
+        self.music_file_frame = self._create_file_input(music_section, 0, "Ficheiro de Música:", 'music_single', lambda: self.select_file('music_single', "Selecione a Música", SUPPORTED_MUSIC_FT), hint_text=None)
         self.music_folder_frame = ttk.Frame(music_section); self.music_folder_frame.grid(row=0, column=0, sticky="ew"); self.music_folder_frame.columnconfigure(0, weight=1)
-        self._create_file_input(self.music_folder_frame, 0, "Pasta de Músicas:", 'music_folder', lambda: self.select_folder('music_folder', "Selecione a Pasta de Músicas"))
+        self._create_file_input(self.music_folder_frame, 0, "Pasta de Músicas:", 'music_folder', lambda: self.select_folder('music_folder', "Selecione a Pasta de Músicas"), hint_text=None)
         
         self.music_behavior_frame = ttk.Frame(self.music_folder_frame)
         self.music_behavior_frame.grid(row=1, column=0, sticky='ew', pady=(10,0))
@@ -705,7 +719,7 @@ class VideoEditorApp:
         effects_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
         effects_section.columnconfigure(0, weight=1)
         
-        self._create_file_input(effects_section, 0, "Arquivo de Efeito (.mp4):", 'effect_overlay', lambda: self.select_file('effect_overlay', "Selecione o vídeo de efeito", SUPPORTED_VIDEO_FT))
+        self._create_file_input(effects_section, 0, "Arquivo de Efeito (.mp4):", 'effect_overlay', lambda: self.select_file('effect_overlay', "Selecione o vídeo de efeito", SUPPORTED_VIDEO_FT), hint_text=None)
         
         blend_frame = ttk.Frame(effects_section)
         blend_frame.grid(row=1, column=0, sticky="ew", pady=4)
@@ -804,7 +818,7 @@ class VideoEditorApp:
         png_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
         png_section.columnconfigure(0, weight=1)
         
-        self._create_file_input(png_section, 0, "Ficheiro PNG:", 'png_overlay', lambda: self.select_file('png_overlay', "Selecione o arquivo PNG", SUPPORTED_PNG_FT, callback=self.on_png_settings_change))
+        self._create_file_input(png_section, 0, "Ficheiro PNG:", 'png_overlay', lambda: self.select_file('png_overlay', "Selecione o arquivo PNG", SUPPORTED_PNG_FT, callback=self.on_png_settings_change), hint_text=None)
 
         pos_frame = ttk.Frame(png_section)
         pos_frame.grid(row=1, column=0, sticky="ew", pady=4)
@@ -821,7 +835,7 @@ class VideoEditorApp:
         presenter_section.grid(row=1, column=0, sticky="ew")
         presenter_section.columnconfigure(1, weight=1)
 
-        self._create_file_input(presenter_section, 0, "Vídeo do Apresentador:", 'presenter_video', lambda: self.select_file('presenter_video', "Selecione o vídeo do apresentador", SUPPORTED_PRESENTER_FT, callback=self.on_presenter_settings_change))
+        self._create_file_input(presenter_section, 0, "Vídeo do Apresentador:", 'presenter_video', lambda: self.select_file('presenter_video', "Selecione o vídeo do apresentador", SUPPORTED_PRESENTER_FT, callback=self.on_presenter_settings_change), hint_text=None)
         
         presenter_pos_frame = ttk.Frame(presenter_section)
         presenter_pos_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=4)
@@ -949,7 +963,7 @@ class VideoEditorApp:
         ffmpeg_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
         ffmpeg_section.columnconfigure(0, weight=1)
         
-        self._create_file_input(ffmpeg_section, 0, "Caminho do FFmpeg:", 'ffmpeg_path', self.ask_ffmpeg_path_manual)
+        self._create_file_input(ffmpeg_section, 0, "Caminho do FFmpeg:", 'ffmpeg_path', self.ask_ffmpeg_path_manual, hint_text=None)
         
         tech_logs_cb = ttk.Checkbutton(ffmpeg_section, text="Mostrar detalhes técnicos (logs do FFmpeg)", variable=self.show_tech_logs_var, bootstyle="round-toggle")
         tech_logs_cb.grid(row=1, column=0, sticky='w', pady=(10,0))
@@ -1173,7 +1187,7 @@ class VideoEditorApp:
             logger.error(f"Erro ao calcular a expiração da licença: {e}")
             self.license_status_label.config(text="Erro na licença", bootstyle="danger")
 
-    def _create_file_input(self, parent, row, label_text, var_key, command):
+    def _create_file_input(self, parent, row, label_text, var_key, command, hint_text: Optional[str] = None):
         frame = ttk.Frame(parent)
         frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         frame.columnconfigure(0, weight=1)
@@ -1188,6 +1202,15 @@ class VideoEditorApp:
         button_container.grid(row=0, column=2, sticky='e')
         select_button = ttk.Button(button_container, text="Selecionar...", command=command, bootstyle="secondary-outline", width=12)
         select_button.pack(side=LEFT)
+        if hint_text:
+            ttk.Label(
+                frame,
+                text=hint_text,
+                anchor='w',
+                justify='left',
+                wraplength=350,
+                bootstyle="secondary",
+            ).grid(row=1, column=0, columnspan=3, sticky="w", padx=(0, 10), pady=(2, 0))
         if var_key in ['png_overlay', 'effect_overlay', 'presenter_video']:
             clear_cmd = lambda: (self.path_vars[var_key].set(''), self.on_png_settings_change() if var_key == 'png_overlay' else self.on_presenter_settings_change())
             clear_button = ttk.Button(button_container, text="Limpar", command=clear_cmd, bootstyle="danger-outline", width=8)
