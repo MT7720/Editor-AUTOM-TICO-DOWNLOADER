@@ -1206,8 +1206,12 @@ class VideoEditorApp:
     def _create_file_input(self, parent, row, label_text, var_key, command):
         frame = ttk.Frame(parent)
         frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
+        frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
-        ttk.Label(frame, text=label_text, anchor='w', justify='left').grid(row=0, column=0, sticky="w", padx=(0, 10))
+        frame.columnconfigure(2, weight=0)
+        ttk.Label(frame, text=label_text, anchor='w', justify='left', wraplength=350).grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
+        )
         entry = ttk.Entry(frame, textvariable=self.path_vars[var_key], state="readonly")
         entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
         button_container = ttk.Frame(frame)
