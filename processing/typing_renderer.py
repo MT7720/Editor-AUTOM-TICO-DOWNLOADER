@@ -15,6 +15,10 @@ from PIL import Image, ImageDraw, ImageFont
 from .ffmpeg_pipeline import execute_ffmpeg
 from shared import INTRO_FONT_REGISTRY, get_intro_font_candidates, resolve_intro_font_candidate_path
 
+REFERENCE_CHAR_COUNT = 125.0
+DEFAULT_TYPING_DURATION_SECONDS = 10.0
+DEFAULT_HOLD_DURATION_SECONDS = 1.5
+
 __all__ = [
     "wrap_text_to_width",
     "generate_typing_audio",
@@ -133,10 +137,27 @@ def create_typing_intro_clip(
 
     width, height = resolution
     frame_rate = 30
-    base_char_duration = 0.08
+
+    def _coerce_positive_duration(raw_value: Optional[float], default: float) -> float:
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return default
+        if value <= 0:
+            return default
+        return value
+
+    typing_seconds = _coerce_positive_duration(
+        params.get("intro_typing_duration_seconds"), DEFAULT_TYPING_DURATION_SECONDS
+    )
+    base_char_duration = max(0.01, typing_seconds / REFERENCE_CHAR_COUNT)
     frames_per_char = max(2, int(round(frame_rate * base_char_duration)))
     char_duration = frames_per_char / frame_rate
-    hold_frames = max(frame_rate, int(round(frame_rate * 1.5)))
+
+    hold_seconds = _coerce_positive_duration(
+        params.get("intro_hold_duration_seconds"), DEFAULT_HOLD_DURATION_SECONDS
+    )
+    hold_frames = max(frame_rate, int(round(frame_rate * hold_seconds)))
     hold_duration = hold_frames / frame_rate
 
     intro_temp_dir = tempfile.mkdtemp(prefix="intro-clip-", dir=temp_dir)
