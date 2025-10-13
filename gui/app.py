@@ -501,8 +501,12 @@ class VideoEditorApp:
         card.configure(borderwidth=1, relief="ridge")
         card.columnconfigure(0, weight=1)
 
+        header_frame = ttk.Frame(card)
+        header_frame.grid(row=0, column=0, sticky="ew")
+        header_frame.columnconfigure(0, weight=1)
+
         radio = ttk.Radiobutton(
-            card,
+            header_frame,
             text=text,
             variable=self.media_type,
             value=value,
@@ -512,30 +516,29 @@ class VideoEditorApp:
         radio.configure(style="ModeTitle.TRadiobutton")
         radio.grid(row=0, column=0, sticky="w")
 
-        description_label = ttk.Label(
-            card,
-            text=description,
-            wraplength=260,
-            justify="left",
-            style="ModeDescription.TLabel",
+        info_icon = ttk.Label(
+            header_frame,
+            text="(?)",
+            cursor="hand2",
+            style="ModeInfo.TLabel",
         )
-        description_label.grid(row=1, column=0, sticky="w", pady=(6, 0))
+        info_icon.grid(row=0, column=1, sticky="e", padx=(8, 0))
 
         def _select_mode(event=None, *, button=radio):
             button.invoke()
 
         card.bind("<Button-1>", _select_mode)
         radio.bind("<Button-1>", lambda e: None)
-        description_label.bind("<Button-1>", _select_mode)
+        header_frame.bind("<Button-1>", _select_mode)
+        info_icon.bind("<Button-1>", _select_mode)
 
-        ToolTip(card, description)
-        ToolTip(description_label, description)
+        ToolTip(info_icon, description)
 
         self._mode_option_cards[value] = card
 
         style = ttk.Style()
         style.configure("ModeTitle.TRadiobutton", font=self._mode_title_font)
-        style.configure("ModeDescription.TLabel", font=self._mode_description_font)
+        style.configure("ModeInfo.TLabel", font=self._mode_description_font)
 
     def _on_mode_option_selected(self):
         self.update_ui_for_media_type()
