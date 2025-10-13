@@ -83,6 +83,17 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
     app.intro_default_text_var = ttk.StringVar(value=config.get("intro_default_text", ""))
     app.intro_language_var = ttk.StringVar(value=config.get("intro_language_code", "auto"))
 
+    app.banner_enabled_var = ttk.BooleanVar(value=config.get("banner_enabled", False))
+    app.banner_default_text_var = ttk.StringVar(value=config.get("banner_default_text", ""))
+    app.banner_language_code_var = ttk.StringVar(value=config.get("banner_language_code", "auto"))
+    app.banner_use_gradient_var = ttk.BooleanVar(value=config.get("banner_use_gradient", False))
+    app.banner_solid_color_var = ttk.StringVar(value=config.get("banner_solid_color", "#FFB347"))
+    app.banner_gradient_start_var = ttk.StringVar(value=config.get("banner_gradient_start", "#FF512F"))
+    app.banner_gradient_end_var = ttk.StringVar(value=config.get("banner_gradient_end", "#DD2476"))
+    app.banner_font_color_var = ttk.StringVar(value=config.get("banner_font_color", "#FFFFFF"))
+    app.banner_duration_var = ttk.DoubleVar(value=config.get("banner_duration", 5.0))
+    app.banner_texts = dict(config.get("banner_texts") or {})
+
     stored_language_code = config.get("single_language_code", "auto") or "auto"
     if isinstance(stored_language_code, str) and stored_language_code.lower() != "auto":
         stored_language_code = stored_language_code.upper()

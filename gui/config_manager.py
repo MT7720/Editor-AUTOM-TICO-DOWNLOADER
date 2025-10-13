@@ -75,6 +75,16 @@ class ConfigManager:
             "intro_texts": {},
             "intro_language_code": "auto",
             "single_language_code": "auto",
+            "banner_enabled": False,
+            "banner_default_text": "",
+            "banner_texts": {},
+            "banner_language_code": "auto",
+            "banner_use_gradient": False,
+            "banner_solid_color": "#FFB347",
+            "banner_gradient_start": "#FF512F",
+            "banner_gradient_end": "#DD2476",
+            "banner_font_color": "#FFFFFF",
+            "banner_duration": 5.0,
         }
         try:
             if os.path.exists(CONFIG_FILE):
