@@ -271,12 +271,21 @@ class VideoEditorApp:
         mode_section_flow = ttk.Frame(mode_section)
         mode_section_flow.pack(fill=X, expand=True)
         
-        ttk.Radiobutton(mode_section_flow, text="Vídeo Único", variable=self.media_type, value="video_single", command=self.update_ui_for_media_type).pack(side=LEFT, padx=(0, 15))
-        ttk.Radiobutton(mode_section_flow, text="Slideshow Único", variable=self.media_type, value="image_folder", command=self.update_ui_for_media_type).pack(side=LEFT, padx=(0, 15))
-        ttk.Radiobutton(mode_section_flow, text="Lote de Vídeos", variable=self.media_type, value="batch_video", command=self.update_ui_for_media_type).pack(side=LEFT, padx=(0, 15))
-        ttk.Radiobutton(mode_section_flow, text="Lote de Imagens", variable=self.media_type, value="batch_image", command=self.update_ui_for_media_type).pack(side=LEFT, padx=(0, 15))
-        ttk.Radiobutton(mode_section_flow, text="Lote Misto", variable=self.media_type, value="batch_mixed", command=self.update_ui_for_media_type).pack(side=LEFT, padx=(0, 15))
-        ttk.Radiobutton(mode_section_flow, text="Lote por Pasta Raiz", variable=self.media_type, value="batch_image_hierarchical", command=self.update_ui_for_media_type).pack(side=LEFT, padx=(0,15))
+        mode_options = [
+            ("Vídeo Único", "video_single", "Processa um único ficheiro de vídeo."),
+            ("Slideshow Único", "image_folder", "Cria um slideshow a partir de uma pasta de imagens."),
+            ("Lote de Vídeos", "batch_video", "Processa vários vídeos com narração e legendas opcionais."),
+            ("Lote de Imagens", "batch_image", "Gera múltiplos slideshows com base em pastas de imagens."),
+            ("Lote Misto", "batch_mixed", "Mistura vídeos e imagens num único lote."),
+            (
+                "Lote por Pasta Raiz",
+                "batch_image_hierarchical",
+                "Processa subpastas numeradas dentro de uma pasta raiz.",
+            ),
+        ]
+
+        for text, value, tip in mode_options:
+            self._add_mode_option(mode_section_flow, text=text, value=value, tooltip=tip)
 
         # --- Ficheiros de Entrada ---
         input_section = ttk.LabelFrame(tab, text=" Ficheiros de Entrada ", padding=15)
@@ -346,6 +355,23 @@ class VideoEditorApp:
 
         # --- Ações e Progresso (Grid row atualizado) ---
         self._create_editor_process_section(tab, 4)
+
+    def _add_mode_option(self, parent: ttk.Frame, *, text: str, value: str, tooltip: str) -> None:
+        container = ttk.Frame(parent)
+        container.pack(side=LEFT, padx=(0, 15))
+
+        radio = ttk.Radiobutton(
+            container,
+            text=text,
+            variable=self.media_type,
+            value=value,
+            command=self.update_ui_for_media_type,
+        )
+        radio.pack(side=LEFT)
+
+        help_icon = ttk.Label(container, text="?", width=2, anchor="center")
+        help_icon.pack(side=LEFT, padx=(5, 0))
+        ToolTip(help_icon, tooltip)
 
     def _on_single_language_selected(self, event=None):
         display_value = self.single_language_display_var.get()
