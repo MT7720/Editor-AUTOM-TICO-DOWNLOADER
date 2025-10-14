@@ -790,7 +790,9 @@ class VideoEditorApp:
         tab.rowconfigure(row, weight=1)
         banner_section = ttk.LabelFrame(tab, text=" Faixa de Destaque ", padding=15)
         banner_section.grid(row=row, column=0, sticky="nsew")
+        banner_section.columnconfigure(0, weight=1)
         banner_section.columnconfigure(1, weight=1)
+        banner_section.rowconfigure(9, weight=1)
         banner_section.rowconfigure(11, weight=1)
 
         self.banner_enabled_check = ttk.Checkbutton(
@@ -914,12 +916,17 @@ class VideoEditorApp:
             self.banner_preview_language_var.get()
         )
 
-        preview_section = ttk.LabelFrame(banner_section, text=" Pré-visualização da Faixa ", padding=5)
-        preview_section.grid(row=9, column=0, columnspan=2, sticky="nsew")
+        preview_section = ttk.LabelFrame(banner_section, text=" Pré-visualização da Faixa ", padding=(14, 12))
+        preview_section.grid(row=9, column=0, columnspan=2, sticky="nsew", pady=(12, 0))
         preview_section.rowconfigure(0, weight=1)
         preview_section.columnconfigure(0, weight=1)
-        self.banner_preview = BannerPreview(preview_section)
+        preview_container = ttk.Frame(preview_section, padding=8)
+        preview_container.grid(row=0, column=0, sticky="nsew")
+        preview_container.rowconfigure(0, weight=1)
+        preview_container.columnconfigure(0, weight=1)
+        self.banner_preview = BannerPreview(preview_container, highlightthickness=0, bd=0)
         self.banner_preview.grid(row=0, column=0, sticky="nsew")
+        self.banner_preview.configure(width=520, height=280)
 
         self._refresh_banner_state()
         self._refresh_banner_gradient_state()
