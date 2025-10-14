@@ -3,6 +3,7 @@ import os
 import platform
 import shutil
 import sys
+import subprocess
 import types
 
 import pytest
@@ -102,3 +103,24 @@ def test_find_executable_checks_application_directories(monkeypatch, tmp_path, c
     assert result.replace("/", "\\") == ffmpeg_path
     assert ffmpeg_path in checked_paths
     assert any(ffmpeg_path in message.replace("/", "\\") for message in caplog.messages)
+
+
+def test_check_encoders_detects_multiple_backends(monkeypatch):
+    monkeypatch.setattr(os.path, "isfile", lambda _: True)
+
+    def fake_run(*args, **kwargs):
+        class Result:
+            stdout = """
+            V..... h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)
+            V..... hevc_qsv            Intel Quick Sync HEVC encoder (codec hevc)
+            V..... h264_amf            AMD AMF H.264 encoder (codec h264)
+            V..... hevc_vaapi          VAAPI HEVC encoder (codec hevc)
+        """
+
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    encoders = FFmpegManager.check_encoders("/tmp/ffmpeg")
+
+    assert {"libx264", "h264_nvenc", "hevc_qsv", "h264_amf", "hevc_vaapi"}.issubset(encoders)

@@ -7,7 +7,7 @@ import platform
 import shutil
 import subprocess
 import sys
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from .utils import logger
 
@@ -70,9 +70,9 @@ class FFmpegManager:
 
     @staticmethod
     def check_encoders(ffmpeg_path: str) -> List[str]:
-        encoders_found = ["libx264"]
+        encoders_found: Set[str] = {"libx264"}
         if not ffmpeg_path or not os.path.isfile(ffmpeg_path):
-            return encoders_found
+            return sorted(encoders_found)
         try:
             creation_flags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
             result = subprocess.run(
@@ -85,14 +85,28 @@ class FFmpegManager:
                 encoding="utf-8",
                 errors="ignore",
             )
-            if "h264_nvenc" in result.stdout:
-                encoders_found.append("h264_nvenc")
-            if "hevc_nvenc" in result.stdout:
-                encoders_found.append("hevc_nvenc")
-            logger.info("Encoders FFmpeg detetados: %s", encoders_found)
+            output = result.stdout or ""
+            encoder_patterns = {
+                "h264_nvenc",
+                "hevc_nvenc",
+                "av1_nvenc",
+                "h264_qsv",
+                "hevc_qsv",
+                "av1_qsv",
+                "h264_amf",
+                "hevc_amf",
+                "av1_amf",
+                "h264_vaapi",
+                "hevc_vaapi",
+                "av1_vaapi",
+            }
+            for encoder_name in encoder_patterns:
+                if encoder_name in output:
+                    encoders_found.add(encoder_name)
+            logger.info("Encoders FFmpeg detetados: %s", sorted(encoders_found))
         except Exception as exc:  # pragma: no cover - defensive subprocess handling
             logger.warning("Falha ao verificar os encoders do FFmpeg: %s", exc)
-        return encoders_found
+        return sorted(encoders_found)
 
 
 __all__ = ["FFmpegManager"]

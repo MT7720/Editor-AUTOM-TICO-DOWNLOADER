@@ -1,6 +1,8 @@
 import pytest
+import gui.app as app_module
 from pyvirtualdisplay import Display
-from main import VideoEditorApp, SUBTITLE_POSITIONS
+from gui.app import VideoEditorApp
+from gui.constants import SUBTITLE_POSITIONS
 
 
 @pytest.fixture(scope="module")
@@ -76,3 +78,26 @@ def test_update_ui_for_media_type(app):
     assert _visible(app.batch_hierarchical_inputs_frame)
     assert _visible(app.video_settings_section)
     assert not _visible(app.slideshow_section)
+
+
+def test_check_available_encoders_updates_ui(app, monkeypatch):
+    simulated_encoders = [
+        "libx264",
+        "h264_nvenc",
+        "hevc_qsv",
+        "h264_amf",
+    ]
+    monkeypatch.setattr(app_module.FFmpegManager, "check_encoders", lambda _: simulated_encoders)
+
+    app.ffmpeg_path_var.set("/tmp/ffmpeg")
+    app._check_available_encoders()
+
+    values = tuple(app.video_codec_combobox.cget("values"))
+    assert "GPU (NVIDIA NVENC H.264)" in values
+    assert "GPU (Intel QSV HEVC)" in values
+    assert "GPU (AMD AMF H.264)" in values
+
+    status_text = app.gpu_status_label.cget("text")
+    assert "NVIDIA NVENC" in status_text
+    assert "Intel Quick Sync Video" in status_text
+    assert "AMD AMF" in status_text
