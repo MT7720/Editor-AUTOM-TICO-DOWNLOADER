@@ -108,18 +108,49 @@ def get_machine_fingerprint():
         identifier = f"{platform.system()}-{platform.node()}-{platform.machine()}"
     return hashlib.sha256(identifier.encode()).hexdigest()
 
-def validate_license_with_id(license_id, fingerprint):
-    """ Revalida uma licença existente online (do script antigo). """
+def validate_license_with_id(license_id, fingerprint, license_key=None):
+    """
+    Revalida uma licença existente junto à API do Keygen.
+
+    É efetuada uma requisição ``POST`` para o endpoint de validação remoto,
+    enviando a impressão digital da máquina e, quando disponível, a chave da
+    licença previamente armazenada. A função devolve sempre uma tupla
+    ``(payload, error)``: ``payload`` contém o JSON devolvido pelo serviço
+    quando a comunicação é bem-sucedida (mesmo que a licença seja considerada
+    inválida) e ``error`` traz uma mensagem normalizada quando ocorre algum
+    problema de rede ou quando a resposta não pode ser interpretada.
+    """
+
     headers = {"Authorization": f"Bearer {PRODUCT_TOKEN}", "Accept": "application/vnd.api+json"}
+    params = {"fingerprint": fingerprint}
+    if license_key:
+        params["key"] = license_key
+
     try:
         response = requests.post(
             f"{API_BASE_URL}/licenses/{license_id}/actions/validate",
-            params={"fingerprint": fingerprint},
-            headers=headers
+            params=params,
+            headers=headers,
+            timeout=10,
         )
-        return response.json()
     except requests.exceptions.RequestException:
-        return None
+        return None, "Não foi possível contactar o servidor de licenças."
+
+    if response.status_code >= 400:
+        detail = None
+        try:
+            detail = response.json().get("errors", [{}])[0].get("detail")
+        except (ValueError, AttributeError, IndexError):
+            detail = None
+        message = detail or "Não foi possível validar a licença. O servidor rejeitou a solicitação."
+        return None, message
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, "Resposta inválida do servidor de licenças."
+
+    return payload, None
 
 def activate_new_license(license_key, fingerprint):
     """ Ativa uma nova licença usando o fluxo simples e funcional do script antigo. """
@@ -183,17 +214,24 @@ def check_license(parent_window):
 
     if stored_data:
         license_id = stored_data.get("data", {}).get("id")
+        license_key = stored_data.get("meta", {}).get("key") if isinstance(stored_data, dict) else None
         if license_id:
             # CORREÇÃO: Sempre revalida a licença do cache online
-            validation_result = validate_license_with_id(license_id, fingerprint)
-            if validation_result and validation_result.get("meta", {}).get("valid"):
+            validation_result, error = validate_license_with_id(license_id, fingerprint, license_key)
+            if error:
+                messagebox.showwarning(
+                    "Falha na Validação",
+                    f"Não foi possível validar a licença guardada:\n{error}",
+                    parent=parent_window,
+                )
+            elif validation_result and validation_result.get("meta", {}).get("valid"):
                 print("Licença em cache revalidada online com sucesso.")
-                
+
                 # <<< --- CORREÇÃO 1 --- >>>
                 # Atualiza o estado global para VÁLIDO
                 set_license_as_valid()
                 # <<< ------------------ >>>
-                
+
                 return True, validation_result # Retorna os dados de validação atualizados
     
     # Se não há licença válida no cache, inicia o processo de ativação

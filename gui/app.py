@@ -198,7 +198,7 @@ class VideoEditorApp:
         if error or not payload:
             self._license_check_failures += 1
             logger.warning(
-                "Não foi possível validar a licença (falha de rede %s). Nova tentativa em %s segundos.",
+                "Não foi possível validar a licença. Tentativas falhas: %s. Nova tentativa em %s segundos.",
                 self._license_check_failures,
                 self._license_check_delay_ms(initial=False) / 1000,
             )
