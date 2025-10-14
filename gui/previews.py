@@ -252,8 +252,19 @@ class BannerPreview(tk.Canvas):
         base.alpha_composite(frame_with_border, (frame_x0, frame_y0))
 
         if banner_image is not None and banner_image.width > 0 and banner_image.height > 0:
-            max_banner_width = int(frame_width * 0.92)
-            max_banner_height = int(frame_height * 0.26)
+            horizontal_padding = max(10, int(round(frame_width * 0.04)))
+            right_padding = max(10, int(round(frame_width * 0.04)))
+            vertical_padding = max(10, int(round(frame_height * 0.04)))
+            bottom_padding = max(10, int(round(frame_height * 0.04)))
+
+            max_banner_width = min(
+                int(frame_width * 0.92),
+                max(1, frame_width - horizontal_padding - right_padding),
+            )
+            max_banner_height = min(
+                int(frame_height * 0.26),
+                max(1, frame_height - vertical_padding - bottom_padding),
+            )
             scale = min(
                 max_banner_width / float(banner_image.width),
                 max_banner_height / float(banner_image.height),
@@ -281,12 +292,16 @@ class BannerPreview(tk.Canvas):
             )
             banner_shadow = banner_shadow.filter(ImageFilter.GaussianBlur(radius=10))
 
-            banner_x = frame_x0 + (frame_width - banner_size[0]) // 2
-            banner_y = frame_y0 + frame_height - banner_size[1] - max(
-                10, int(frame_height * 0.07)
-            )
+            banner_x = frame_x0 + horizontal_padding
+            banner_y = frame_y0 + vertical_padding
 
-            base.alpha_composite(banner_shadow, (banner_x - 6, banner_y - 2))
+            base.alpha_composite(
+                banner_shadow,
+                (
+                    banner_x - 6,
+                    banner_y - 2,
+                ),
+            )
             base.paste(banner_preview, (banner_x, banner_y), banner_preview)
 
         return base, frame_bbox
