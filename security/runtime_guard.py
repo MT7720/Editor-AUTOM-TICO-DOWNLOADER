@@ -18,6 +18,8 @@ LOG_NAME = "security.runtime_guard"
 LOG_FILE_NAME = "runtime_guard.log"
 _MANIFEST_FILENAME = "runtime_manifest.json"
 
+INTEGRITY_CHECK_INTERVAL_SECONDS = 300
+
 # --- CHAVE DE SEGURANÇA EMBUTIDA ---
 _XOR_KEY = b"uma-chave-simples-para-ofuscar-a-outra"
 _ENCODED_HMAC_KEY = b'=\\H\x07\r\t[\x10\x17X\x1c\x04\x0e\x01\x10\rW\x02\x05\t\x0b\x06\x11X\r\x1c\x01\x1b\x02\x04\x1a\x11W\x0e\t\x03\x01\x1a\x17\rX\x06\t\x02\x01\x17\x04W\x1e\x1d\x1a'
@@ -35,6 +37,10 @@ _logger: Optional[logging.Logger] = None
 _manifest_cache: Optional[Dict[str, object]] = None
 _HMAC_KEY_UNINITIALIZED: object = object()
 _hmac_key_cache: object = _HMAC_KEY_UNINITIALIZED
+
+_integrity_lock = threading.Lock()
+_integrity_timer: Optional[threading.Timer] = None
+_integrity_scheduler_started = False
 
 # --- FUNÇÃO CORRIGIDA PARA ENCONTRAR O CAMINHO BASE DOS LOGS ---
 def _get_external_base_path() -> Path:
@@ -163,6 +169,41 @@ def enforce_runtime_safety():
         os._exit(1) # Encerra silenciosamente em caso de violação
     _get_logger().info("Verificações de segurança iniciais concluídas com sucesso.")
 
-def schedule_integrity_check():
-    # Esta função pode ser mantida como está
-    pass
+def _schedule_next_timer_locked() -> None:
+    global _integrity_timer
+
+    timer = threading.Timer(INTEGRITY_CHECK_INTERVAL_SECONDS, _run_periodic_integrity_check)
+    timer.daemon = True
+    _integrity_timer = timer
+    timer.start()
+
+
+def _run_periodic_integrity_check() -> None:
+    logger = _get_logger()
+    logger.info("Iniciando revalidação periódica de integridade.")
+    violations = _perform_all_checks()
+    if violations:
+        for item in violations:
+            logger.error("Violação de segurança: %s", item)
+        os._exit(1)
+    logger.info("Revalidação periódica concluída sem violações.")
+
+    with _integrity_lock:
+        if _integrity_scheduler_started:
+            _schedule_next_timer_locked()
+
+
+def schedule_integrity_check() -> None:
+    global _integrity_scheduler_started
+
+    with _integrity_lock:
+        if _integrity_scheduler_started:
+            return
+
+        _integrity_scheduler_started = True
+        logger = _get_logger()
+        logger.info(
+            "Agendando verificações de integridade a cada %s segundos.",
+            INTEGRITY_CHECK_INTERVAL_SECONDS,
+        )
+        _schedule_next_timer_locked()
