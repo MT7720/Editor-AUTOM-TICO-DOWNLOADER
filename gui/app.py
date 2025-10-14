@@ -1241,58 +1241,117 @@ class VideoEditorApp:
         update_display(var.get())
 
     def _create_subtitle_tab(self):
-        # ... (sem alterações) ...
         tab = ttk.Frame(self.notebook, padding=(20, 15))
         self.notebook.add(tab, text=" Editor: Legendas ")
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(0, weight=1)
-        
-        settings_frame = ttk.LabelFrame(tab, text=" Estilo da Legenda (SRT) ", padding=15)
-        settings_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
-        settings_frame.columnconfigure(1, weight=1)
-        settings_frame.columnconfigure(3, weight=1)
-        
-        self._create_font_size_slider(settings_frame, 0, 0)
-        ttk.Label(settings_frame, text="Posição:").grid(row=0, column=2, sticky="w", padx=(20,10), pady=5)
-        pos_combo = ttk.Combobox(settings_frame, textvariable=self.subtitle_position_var, values=list(SUBTITLE_POSITIONS.keys()), state="readonly")
+        tab.rowconfigure(1, weight=1)
+
+        header_frame = ttk.Frame(tab, padding=(0, 0, 0, 15))
+        header_frame.grid(row=0, column=0, sticky="ew")
+        header_frame.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            header_frame,
+            text="Personalize suas legendas",
+            font=("Segoe UI", 14, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            header_frame,
+            text="Ajuste tamanho, posição e cores para combinar com o seu vídeo.",
+            bootstyle="secondary",
+        ).grid(row=1, column=0, sticky="w", pady=(5, 0))
+
+        main_pane = ttk.PanedWindow(tab, orient=HORIZONTAL)
+        main_pane.grid(row=1, column=0, sticky="nsew")
+
+        controls_container = ttk.Frame(main_pane, padding=15)
+        controls_container.columnconfigure(0, weight=1)
+        main_pane.add(controls_container, weight=3)
+
+        style_section = ttk.LabelFrame(controls_container, text=" Aparência e Layout ", padding=15)
+        style_section.grid(row=0, column=0, sticky="ew")
+        style_section.columnconfigure(1, weight=1)
+        style_section.columnconfigure(3, weight=1)
+
+        self._create_font_size_slider(style_section, 0, 0)
+        ttk.Label(style_section, text="Posição:").grid(row=0, column=2, sticky="w", padx=(20,10), pady=5)
+        pos_combo = ttk.Combobox(
+            style_section,
+            textvariable=self.subtitle_position_var,
+            values=list(SUBTITLE_POSITIONS.keys()),
+            state="readonly",
+        )
         pos_combo.grid(row=0, column=3, sticky="ew")
         pos_combo.bind('<<ComboboxSelected>>', self.on_subtitle_style_change)
-        
-        ttk.Label(settings_frame, text="Cor do Texto:").grid(row=1, column=0, sticky="w", padx=(0,10), pady=5)
-        self._create_color_picker(settings_frame, 1, 1, self.subtitle_textcolor_var, self.on_subtitle_style_change)
-        ttk.Label(settings_frame, text="Cor do Contorno:").grid(row=1, column=2, sticky="w", padx=(20,10), pady=5)
-        self._create_color_picker(settings_frame, 1, 3, self.subtitle_outlinecolor_var, self.on_subtitle_style_change)
 
-        style_frame = ttk.Frame(settings_frame)
+        ttk.Label(style_section, text="Cor do Texto:").grid(row=1, column=0, sticky="w", padx=(0,10), pady=5)
+        self._create_color_picker(style_section, 1, 1, self.subtitle_textcolor_var, self.on_subtitle_style_change)
+        ttk.Label(style_section, text="Cor do Contorno:").grid(row=1, column=2, sticky="w", padx=(20,10), pady=5)
+        self._create_color_picker(style_section, 1, 3, self.subtitle_outlinecolor_var, self.on_subtitle_style_change)
+
+        style_frame = ttk.Frame(style_section)
         style_frame.grid(row=2, column=1, sticky="w", pady=5)
-        ttk.Checkbutton(style_frame, text="Negrito", variable=self.subtitle_bold_var, bootstyle="round-toggle", command=self.on_subtitle_style_change).pack(side=LEFT, padx=(0, 10))
-        ttk.Checkbutton(style_frame, text="Itálico", variable=self.subtitle_italic_var, bootstyle="round-toggle", command=self.on_subtitle_style_change).pack(side=LEFT)
-        
-        font_input_container = ttk.Frame(settings_frame)
-        font_input_container.grid(row=2, column=2, columnspan=2, sticky='ew', padx=(20,0))
-        font_input_container.columnconfigure(1, weight=1)
+        ttk.Checkbutton(
+            style_frame,
+            text="Negrito",
+            variable=self.subtitle_bold_var,
+            bootstyle="round-toggle",
+            command=self.on_subtitle_style_change,
+        ).pack(side=LEFT, padx=(0, 10))
+        ttk.Checkbutton(
+            style_frame,
+            text="Itálico",
+            variable=self.subtitle_italic_var,
+            bootstyle="round-toggle",
+            command=self.on_subtitle_style_change,
+        ).pack(side=LEFT)
 
-        ttk.Label(font_input_container, text="Ficheiro de Fonte:", width=15, anchor='w').grid(row=0, column=0, sticky="w", padx=(0, 10))
-        
-        entry = ttk.Entry(font_input_container, textvariable=self.subtitle_font_file, state="readonly")
+        font_section = ttk.LabelFrame(controls_container, text=" Fonte Personalizada ", padding=15)
+        font_section.grid(row=1, column=0, sticky="ew", pady=(15, 0))
+        font_section.columnconfigure(1, weight=1)
+
+        ttk.Label(font_section, text="Ficheiro de Fonte:", width=18, anchor='w').grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        entry = ttk.Entry(font_section, textvariable=self.subtitle_font_file, state="readonly")
         entry.grid(row=0, column=1, sticky="ew", padx=(0, 5))
-        
-        select_button = ttk.Button(font_input_container, text="Selecionar...", command=lambda: self.select_file('subtitle_font', "Selecione a Fonte", SUPPORTED_FONT_FT, callback=self.on_subtitle_style_change), bootstyle="secondary-outline", width=12)
+
+        select_button = ttk.Button(
+            font_section,
+            text="Selecionar...",
+            command=lambda: self.select_file('subtitle_font', "Selecione a Fonte", SUPPORTED_FONT_FT, callback=self.on_subtitle_style_change),
+            bootstyle="secondary-outline",
+            width=12,
+        )
         select_button.grid(row=0, column=2, sticky="e")
 
-        clear_button = ttk.Button(font_input_container, text="Limpar", command=self.reset_subtitle_font, bootstyle="danger-outline", width=8)
+        clear_button = ttk.Button(
+            font_section,
+            text="Limpar",
+            command=self.reset_subtitle_font,
+            bootstyle="danger-outline",
+            width=8,
+        )
         clear_button.grid(row=0, column=3, sticky="e", padx=(5,0))
         ToolTip(clear_button, "Voltar para a fonte padrão")
 
-        preview_section = ttk.LabelFrame(tab, text=" Pré-visualização da Legenda ", padding=5)
+        preview_container = ttk.Frame(main_pane, padding=15)
+        preview_container.columnconfigure(0, weight=1)
+        preview_container.rowconfigure(1, weight=1)
+        main_pane.add(preview_container, weight=4)
+
+        ttk.Label(
+            preview_container,
+            text="Pré-visualização da legenda",
+            font=("Segoe UI", 12, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 10))
+
+        preview_section = ttk.LabelFrame(preview_container, padding=10)
         preview_section.grid(row=1, column=0, sticky="nsew")
         preview_section.rowconfigure(0, weight=1)
         preview_section.columnconfigure(0, weight=1)
-        
+
         self.subtitle_preview = SubtitlePreview(preview_section, self)
         self.subtitle_preview.grid(row=0, column=0, sticky="nsew")
-        
-        tab.rowconfigure(1, weight=1)
 
     def _create_overlay_tab(self):
         # ... (sem alterações) ...
