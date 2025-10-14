@@ -1154,9 +1154,20 @@ class VideoEditorApp:
         self.on_banner_settings_change()
 
     def on_banner_settings_change(self, event=None):
-        if hasattr(self, '_banner_update_job'):
-            self.root.after_cancel(self._banner_update_job)
-        self._banner_update_job = self.root.after(120, self.update_banner_preview_job)
+        if hasattr(self, '_banner_update_job') and self._banner_update_job is not None:
+            try:
+                self.root.after_cancel(self._banner_update_job)
+            except Exception:
+                pass
+            finally:
+                self._banner_update_job = None
+
+        # Atualiza imediatamente para que os controles respondam em tempo real.
+        self.update_banner_preview_job()
+
+        # Proteção leve para garantir que a última alteração seja refletida
+        # mesmo que múltiplos eventos ocorram em sequência muito rápida.
+        self._banner_update_job = self.root.after(80, self.update_banner_preview_job)
 
     def update_banner_preview_job(self):
         if not hasattr(self, 'banner_preview'):
@@ -1567,7 +1578,7 @@ class VideoEditorApp:
             var.set(val)
             display_var.set(format_str % val)
             if command:
-                 self.root.after(50, command)
+                command()
 
         scale = ttk.Scale(slider_frame, from_=from_, to=to, variable=var, orient=HORIZONTAL, command=update_display)
         scale.grid(row=0, column=0, sticky="ew", padx=(0, 10))
