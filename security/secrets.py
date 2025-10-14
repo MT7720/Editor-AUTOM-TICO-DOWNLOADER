@@ -78,6 +78,7 @@ def load_license_secrets() -> LicenseServiceCredentials:
         _load_bundle_from_env()
         or _load_bundle_from_file()
         or _load_from_env_variables()
+        or _load_bundle_from_local_installation()
     )
 
     if not payload:
@@ -121,19 +122,7 @@ def _load_bundle_from_file() -> Optional[Dict[str, Any]]:
             f"O ficheiro referenciado por KEYGEN_LICENSE_BUNDLE_PATH não existe: {path}"
         )
 
-    if os.name != "nt":  # Em Windows a verificação de permissões é diferente.
-        mode = stat.S_IMODE(file_path.stat().st_mode)
-        if mode & (stat.S_IRWXG | stat.S_IRWXO):
-            raise SecretLoaderError(
-                "As permissões do ficheiro de segredos são demasiado abertas. "
-                "Utilize chmod 600 e garanta que apenas o utilizador actual o pode ler."
-            )
-
-    try:
-        with file_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except ValueError as exc:
-        raise SecretLoaderError("O ficheiro de segredos não contém JSON válido.") from exc
+    return _load_bundle_from_disk(file_path)
 
 
 def _load_from_env_variables() -> Optional[Dict[str, Any]]:
@@ -153,6 +142,61 @@ def _load_from_env_variables() -> Optional[Dict[str, Any]]:
         payload["api_base_url"] = api_base_url
 
     return payload
+
+
+def _load_bundle_from_local_installation() -> Optional[Dict[str, Any]]:
+    """Procura bundles instalados juntamente com a aplicação."""
+
+    for candidate in _iter_local_bundle_candidates():
+        if not candidate.is_file():
+            continue
+
+        return _load_bundle_from_disk(candidate)
+
+    return None
+
+
+def _iter_local_bundle_candidates() -> tuple[Path, ...]:
+    base_path = Path(__file__).resolve().parent
+    project_root = base_path.parent
+
+    candidates = []
+
+    resources_path = project_root / "resources" / "license_credentials.json"
+    candidates.append(resources_path)
+
+    config_path = project_root / "video_editor_config.json"
+    if config_path.is_file():
+        try:
+            with config_path.open("r", encoding="utf-8") as f:
+                config_data = json.load(f)
+        except ValueError:
+            config_data = {}
+        else:
+            bundle_path = config_data.get("license_credentials_path")
+            if isinstance(bundle_path, str) and bundle_path.strip():
+                resolved = Path(bundle_path.strip())
+                if not resolved.is_absolute():
+                    resolved = config_path.parent / resolved
+                candidates.append(resolved)
+
+    return tuple(dict.fromkeys(candidates))
+
+
+def _load_bundle_from_disk(file_path: Path) -> Dict[str, Any]:
+    if os.name != "nt":  # Em Windows a verificação de permissões é diferente.
+        mode = stat.S_IMODE(file_path.stat().st_mode)
+        if mode & (stat.S_IRWXG | stat.S_IRWXO):
+            raise SecretLoaderError(
+                "As permissões do ficheiro de segredos são demasiado abertas. "
+                "Utilize chmod 600 e garanta que apenas o utilizador actual o pode ler."
+            )
+
+    try:
+        with file_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except ValueError as exc:
+        raise SecretLoaderError("O ficheiro de segredos não contém JSON válido.") from exc
 
 
 def _ensure_payload_is_authenticated(payload: Dict[str, Any]) -> None:

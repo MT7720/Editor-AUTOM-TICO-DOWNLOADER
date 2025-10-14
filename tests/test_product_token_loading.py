@@ -1,6 +1,7 @@
 import base64
 import importlib
 import json
+import os
 import sys
 
 import pytest
@@ -46,6 +47,35 @@ def test_load_license_secrets_from_bundle(monkeypatch):
     assert credentials.account_id == "bundle-account"
     assert credentials.product_token == "bundle-token"
     assert credentials.api_base_url.endswith("/bundle-account")
+
+
+def test_load_license_secrets_from_local_installation(monkeypatch, tmp_path):
+    payload = {
+        "account_id": "local-account",
+        "product_token": "local-token",
+        "channel": "brokered",
+    }
+
+    bundle_path = tmp_path / "credentials.json"
+    bundle_path.write_text(json.dumps(payload), encoding="utf-8")
+    if os.name != "nt":
+        bundle_path.chmod(0o600)
+
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
+    monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
+    monkeypatch.setattr(
+        secrets,
+        "_iter_local_bundle_candidates",
+        lambda: (bundle_path,),
+    )
+
+    credentials = secrets.load_license_secrets()
+
+    assert credentials.account_id == "local-account"
+    assert credentials.product_token == "local-token"
+    assert credentials.api_base_url.endswith("/local-account")
 
 
 def test_missing_configuration_raises(monkeypatch):

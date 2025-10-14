@@ -11,7 +11,8 @@ import time
 import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
+from typing import Optional
 
 import requests
 import ttkbootstrap as ttk
@@ -55,11 +56,75 @@ def get_license_service_credentials() -> LicenseServiceCredentials:
     try:
         return load_license_secrets()
     except SecretLoaderError as exc:
+        interactive_credentials = _prompt_for_local_bundle(str(exc))
+        if interactive_credentials:
+            return interactive_credentials
+
         raise RuntimeError(
             "Não foi possível carregar as credenciais do serviço de licenças. "
             "Certifique-se de que o bundle seguro foi provisionado pelo broker. "
             f"Detalhes: {exc}"
         ) from exc
+
+
+def _prompt_for_local_bundle(error_message: str) -> Optional[LicenseServiceCredentials]:
+    """Solicita ao utilizador um ficheiro local com o bundle de credenciais."""
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        return None
+
+    message = (
+        "Não foi possível localizar as credenciais necessárias para contactar o "
+        "Keygen. Se tiver recebido um ficheiro JSON com o bundle assinado, "
+        "seleccione-o abaixo.\n\nDetalhes técnicos: "
+        f"{error_message}"
+    )
+
+    should_open = messagebox.askyesno(
+        "Bundle do serviço de licenças",
+        message,
+        icon=messagebox.QUESTION,
+        parent=root,
+    )
+
+    credentials: Optional[LicenseServiceCredentials] = None
+    while should_open and credentials is None:
+        bundle_path = filedialog.askopenfilename(
+            title="Seleccione o ficheiro de credenciais",  # type: ignore[arg-type]
+            filetypes=[("JSON", "*.json"), ("Todos os ficheiros", "*.*")],
+            parent=root,
+        )
+
+        if not bundle_path:
+            break
+
+        os.environ["KEYGEN_LICENSE_BUNDLE_PATH"] = bundle_path
+        os.environ.pop("KEYGEN_LICENSE_BUNDLE", None)
+
+        try:
+            credentials = load_license_secrets()
+        except SecretLoaderError as exc:
+            should_open = messagebox.askretrycancel(
+                "Bundle inválido",
+                (
+                    "O ficheiro seleccionado não pôde ser carregado. "
+                    "Verifique se contém JSON válido com 'account_id', 'product_token' "
+                    f"e metadados autenticados.\n\nErro original: {exc}"
+                ),
+                parent=root,
+            )
+        else:
+            messagebox.showinfo(
+                "Credenciais carregadas",
+                "O bundle de credenciais foi carregado com sucesso.",
+                parent=root,
+            )
+
+    root.destroy()
+    return credentials
 
 
 def get_api_base_url() -> str:
