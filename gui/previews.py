@@ -208,13 +208,29 @@ class BannerPreview(tk.Canvas):
             banner_reference_width = banner_image.width or video_w
             width_scale = frame_width / float(max(1, banner_reference_width))
             width_scale = max(width_scale, 0.01)
+
+            target_banner_height = frame_height * 0.6
+            height_scale = target_banner_height / float(max(1, banner_image.height))
+            scale = max(width_scale, height_scale)
+
             banner_size = (
-                max(1, int(round(banner_image.width * width_scale))),
-                max(1, int(round(banner_image.height * width_scale))),
+                max(1, int(round(banner_image.width * scale))),
+                max(1, int(round(banner_image.height * scale))),
             )
             banner_preview = banner_image.resize(
                 banner_size, Image.Resampling.LANCZOS
             )
+
+            if banner_preview.width > frame_width:
+                excess = banner_preview.width - frame_width
+                crop_left = excess // 2
+                crop_box = (
+                    crop_left,
+                    0,
+                    crop_left + frame_width,
+                    banner_preview.height,
+                )
+                banner_preview = banner_preview.crop(crop_box)
 
             banner_x = frame_x0
             banner_y = frame_y0
