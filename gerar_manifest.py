@@ -23,11 +23,6 @@ RESOURCES_TO_PROTECT: Dict[str, Dict[str, object]] = {
         "normalize_newlines": True,
         "description": "Chaves públicas utilizadas para validar licenças emitidas.",
     },
-    "license_secrets": {
-        "path": "security/product_token.dat",
-        "normalize_newlines": False,
-        "description": "Token ofuscado que habilita funcionalidades premium.",
-    },
     "processing_pipeline": {
         "path": "processing/ffmpeg_pipeline.py",
         "normalize_newlines": True,
@@ -62,7 +57,8 @@ def main() -> None:
 
     # Garante que a pasta 'security' exista
     MANIFEST_PATH.parent.mkdir(exist_ok=True)
-    MANIFEST_PATH.write_text(json.dumps(manifest_data, indent=4, sort_keys=True), encoding="utf-8")
+    serialized_manifest = json.dumps(manifest_data, indent=4, sort_keys=True)
+    MANIFEST_PATH.write_text(f"{serialized_manifest}\n", encoding="utf-8")
 
     print("-" * 30)
     print(f"Manifesto salvo em '{MANIFEST_PATH}'.")

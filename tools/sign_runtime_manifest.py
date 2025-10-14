@@ -109,7 +109,8 @@ def sign_manifest(args: argparse.Namespace) -> None:
             raise SystemExit(f"Hash ausente para o executável '{name}'")
         entry["signature"] = sign_hash(key, entry_hash)
 
-    manifest_path.write_text(json.dumps(manifest, indent=4, sort_keys=True), encoding="utf-8")
+    serialized_manifest = json.dumps(manifest, indent=4, sort_keys=True)
+    manifest_path.write_text(f"{serialized_manifest}\n", encoding="utf-8")
 
 
 def build_parser() -> argparse.ArgumentParser:
