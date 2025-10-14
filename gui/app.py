@@ -795,10 +795,8 @@ class VideoEditorApp:
         banner_section = ttk.LabelFrame(tab, text=" Faixa de Destaque ", padding=15)
         banner_section.grid(row=row, column=0, sticky="nsew")
         banner_section.columnconfigure(0, weight=1)
-        banner_section.columnconfigure(1, weight=1)
 
-        row_idx = 0
-
+        header_row = 0
         self.banner_enabled_check = ttk.Checkbutton(
             banner_section,
             text="Ativar faixa informativa no início do vídeo",
@@ -806,8 +804,8 @@ class VideoEditorApp:
             bootstyle="round-toggle",
             command=lambda: (self._refresh_banner_state(), self.on_banner_settings_change()),
         )
-        self.banner_enabled_check.grid(row=row_idx, column=0, columnspan=2, sticky="w")
-        row_idx += 1
+        self.banner_enabled_check.grid(row=header_row, column=0, sticky="w")
+        header_row += 1
 
         ttk.Label(
             banner_section,
@@ -815,13 +813,29 @@ class VideoEditorApp:
                 "A faixa é exibida logo após a digitalização, quando o vídeo principal começa, "
                 "e permanece durante todo o conteúdo."
             ),
-            wraplength=760,
+            wraplength=420,
             justify=LEFT,
-        ).grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(6, 2))
-        row_idx += 1
+        ).grid(row=header_row, column=0, sticky="w", pady=(6, 2))
+        header_row += 1
 
-        language_frame = ttk.Frame(banner_section)
-        language_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        content_pane = ttk.PanedWindow(banner_section, orient=HORIZONTAL)
+        content_pane.grid(row=header_row, column=0, sticky="nsew", pady=(12, 0))
+        banner_section.rowconfigure(header_row, weight=1)
+
+        controls_frame = ttk.Frame(content_pane, padding=(0, 0, 12, 0))
+        controls_frame.columnconfigure(0, weight=1)
+
+        preview_container = ttk.Frame(content_pane, padding=(12, 0, 0, 0))
+        preview_container.rowconfigure(0, weight=1)
+        preview_container.columnconfigure(0, weight=1)
+
+        content_pane.add(controls_frame, weight=3)
+        content_pane.add(preview_container, weight=2)
+
+        control_row = 0
+
+        language_frame = ttk.Frame(controls_frame)
+        language_frame.grid(row=control_row, column=0, sticky="ew")
         language_frame.columnconfigure(1, weight=1)
         ttk.Label(language_frame, text="Idioma preferido para traduções automáticas:").grid(
             row=0, column=0, sticky="w", padx=(0, 10)
@@ -838,11 +852,11 @@ class VideoEditorApp:
             "<<ComboboxSelected>>", lambda event: self._on_banner_language_selected()
         )
         self._set_banner_language_display_from_code(self.banner_language_code_var.get())
-        row_idx += 1
+        control_row += 1
 
         self.banner_duration_frame = self._create_slider_control(
-            banner_section,
-            row_idx,
+            controls_frame,
+            control_row,
             "Duração (s):",
             self.banner_duration_var,
             1.0,
@@ -850,10 +864,10 @@ class VideoEditorApp:
             "%.1f",
             self.on_banner_settings_change,
         )
-        row_idx += 1
+        control_row += 1
 
-        colors_frame = ttk.LabelFrame(banner_section, text=" Cores da Faixa ", padding=10)
-        colors_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        colors_frame = ttk.LabelFrame(controls_frame, text=" Cores da Faixa ", padding=10)
+        colors_frame.grid(row=control_row, column=0, sticky="ew", pady=(10, 0))
         colors_frame.columnconfigure(1, weight=1)
 
         color_mode_frame = ttk.Frame(colors_frame)
@@ -886,18 +900,18 @@ class VideoEditorApp:
             colors_frame, 3, 1, self.banner_gradient_end_var, self.on_banner_settings_change
         )
         self._banner_color_frames = [solid_picker, gradient_start_picker, gradient_end_picker]
-        row_idx += 1
+        control_row += 1
 
-        font_frame = ttk.Frame(banner_section)
-        font_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        font_frame = ttk.Frame(controls_frame)
+        font_frame.grid(row=control_row, column=0, sticky="ew", pady=(10, 0))
         ttk.Label(font_frame, text="Cor do texto:").grid(row=0, column=0, sticky="w", padx=(0, 10))
         self.banner_font_color_picker = self._create_color_picker(
             font_frame, 0, 1, self.banner_font_color_var, self.on_banner_settings_change
         )
-        row_idx += 1
+        control_row += 1
 
-        text_effects_frame = ttk.LabelFrame(banner_section, text=" Estilo do Texto ", padding=10)
-        text_effects_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        text_effects_frame = ttk.LabelFrame(controls_frame, text=" Estilo do Texto ", padding=10)
+        text_effects_frame.grid(row=control_row, column=0, sticky="ew", pady=(10, 0))
         text_effects_frame.columnconfigure(1, weight=1)
 
         effect_row = 0
@@ -989,29 +1003,27 @@ class VideoEditorApp:
             shadow_offset_x_frame,
             shadow_offset_y_frame,
         ]
-        row_idx += 1
+        control_row += 1
 
-        ttk.Label(banner_section, text="Texto da faixa:").grid(
-            row=row_idx, column=0, columnspan=2, sticky="w", pady=(10, 5)
+        ttk.Label(controls_frame, text="Texto da faixa:").grid(
+            row=control_row, column=0, sticky="w", pady=(10, 5)
         )
-        row_idx += 1
+        control_row += 1
 
-        self.banner_default_text_widget = scrolledtext.ScrolledText(banner_section, height=4, wrap="word")
-        self.banner_default_text_widget.grid(row=row_idx, column=0, columnspan=2, sticky="ew")
+        controls_frame.rowconfigure(control_row, weight=1)
+        self.banner_default_text_widget = scrolledtext.ScrolledText(controls_frame, height=6, wrap="word")
+        self.banner_default_text_widget.grid(row=control_row, column=0, sticky="nsew")
         self.banner_default_text_widget.insert("1.0", self.banner_default_text_var.get())
         self.banner_default_text_widget.bind("<KeyRelease>", self._on_banner_default_text_change)
-        row_idx += 1
 
-        preview_section = ttk.LabelFrame(
-            banner_section, text=" Pré-visualização da Faixa ", padding=12
+        preview_frame = ttk.LabelFrame(
+            preview_container, text=" Pré-visualização da Faixa ", padding=12
         )
-        preview_section.grid(row=row_idx, column=0, columnspan=2, sticky="nsew", pady=(15, 0))
-        preview_section.rowconfigure(0, weight=1, minsize=220)
-        preview_section.columnconfigure(0, weight=1)
-        self.banner_preview = BannerPreview(preview_section, height=260)
+        preview_frame.grid(row=0, column=0, sticky="nsew")
+        preview_frame.rowconfigure(0, weight=1, minsize=260)
+        preview_frame.columnconfigure(0, weight=1)
+        self.banner_preview = BannerPreview(preview_frame, height=320)
         self.banner_preview.grid(row=0, column=0, sticky="nsew")
-
-        banner_section.rowconfigure(row_idx, weight=1, minsize=240)
 
         self._refresh_banner_state()
         self._refresh_banner_gradient_state()
