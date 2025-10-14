@@ -9,6 +9,15 @@ import pytest
 from security import secrets
 
 
+@pytest.fixture(autouse=True)
+def reset_secret_caches():
+    if hasattr(secrets._load_config_data, "cache_clear"):
+        secrets._load_config_data.cache_clear()
+    yield
+    if hasattr(secrets._load_config_data, "cache_clear"):
+        secrets._load_config_data.cache_clear()
+
+
 def _reload_license_checker():
     sys.modules.pop("license_checker", None)
     module = importlib.import_module("license_checker")
@@ -76,6 +85,30 @@ def test_load_license_secrets_from_local_installation(monkeypatch, tmp_path):
     assert credentials.account_id == "local-account"
     assert credentials.product_token == "local-token"
     assert credentials.api_base_url.endswith("/local-account")
+
+
+def test_load_license_secrets_from_inline_config(monkeypatch, tmp_path):
+    config_data = {
+        "license_account_id": "inline-account",
+        "license_product_token": "inline-token",
+        "license_api_base_url": "https://example.test/accounts/inline-account",
+    }
+
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
+    monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
+
+    def fake_load_config_data():
+        return tmp_path / "video_editor_config.json", config_data
+
+    monkeypatch.setattr(secrets, "_load_config_data", fake_load_config_data)
+
+    credentials = secrets.load_license_secrets()
+
+    assert credentials.account_id == "inline-account"
+    assert credentials.product_token == "inline-token"
+    assert credentials.api_base_url == "https://example.test/accounts/inline-account"
 
 
 def test_missing_configuration_raises(monkeypatch):

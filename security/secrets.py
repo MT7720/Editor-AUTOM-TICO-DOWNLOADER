@@ -23,6 +23,7 @@ import json
 import os
 import stat
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -83,7 +84,7 @@ def load_license_secrets() -> LicenseServiceCredentials:
 
     if not payload:
         raise SecretLoaderError(
-            "Nenhum pacote de segredos foi fornecido. Use KEYGEN_LICENSE_BUNDLE, "
+            "Nenhum pacote de segredos/credenciais foi fornecido. Use KEYGEN_LICENSE_BUNDLE, "
             "KEYGEN_LICENSE_BUNDLE_PATH ou injete KEYGEN_ACCOUNT_ID/KEYGEN_PRODUCT_TOKEN."
         )
 
@@ -147,6 +148,12 @@ def _load_from_env_variables() -> Optional[Dict[str, Any]]:
 def _load_bundle_from_local_installation() -> Optional[Dict[str, Any]]:
     """Procura bundles instalados juntamente com a aplicação."""
 
+    config_path, config_data = _load_config_data()
+
+    inline_credentials = _extract_inline_credentials(config_data)
+    if inline_credentials:
+        return inline_credentials
+
     for candidate in _iter_local_bundle_candidates():
         if not candidate.is_file():
             continue
@@ -165,20 +172,13 @@ def _iter_local_bundle_candidates() -> tuple[Path, ...]:
     resources_path = project_root / "resources" / "license_credentials.json"
     candidates.append(resources_path)
 
-    config_path = project_root / "video_editor_config.json"
-    if config_path.is_file():
-        try:
-            with config_path.open("r", encoding="utf-8") as f:
-                config_data = json.load(f)
-        except ValueError:
-            config_data = {}
-        else:
-            bundle_path = config_data.get("license_credentials_path")
-            if isinstance(bundle_path, str) and bundle_path.strip():
-                resolved = Path(bundle_path.strip())
-                if not resolved.is_absolute():
-                    resolved = config_path.parent / resolved
-                candidates.append(resolved)
+    config_path, config_data = _load_config_data()
+    bundle_path = config_data.get("license_credentials_path")
+    if isinstance(bundle_path, str) and bundle_path.strip():
+        resolved = Path(bundle_path.strip())
+        if not resolved.is_absolute():
+            resolved = config_path.parent / resolved
+        candidates.append(resolved)
 
     return tuple(dict.fromkeys(candidates))
 
@@ -197,6 +197,50 @@ def _load_bundle_from_disk(file_path: Path) -> Dict[str, Any]:
             return json.load(f)
     except ValueError as exc:
         raise SecretLoaderError("O ficheiro de segredos não contém JSON válido.") from exc
+
+
+@lru_cache(maxsize=1)
+def _load_config_data() -> tuple[Path, Dict[str, Any]]:
+    """Carrega o ficheiro de configuração principal do editor."""
+
+    config_path = Path(__file__).resolve().parent.parent / "video_editor_config.json"
+    if not config_path.is_file():
+        return config_path, {}
+
+    try:
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except ValueError:
+        data = {}
+
+    return config_path, data
+
+
+def _extract_inline_credentials(config_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Obtém credenciais definidas diretamente no ficheiro de configuração."""
+
+    account_id = config_data.get("license_account_id")
+    product_token = config_data.get("license_product_token")
+
+    if not isinstance(account_id, str) or not isinstance(product_token, str):
+        return None
+
+    account_id = account_id.strip()
+    product_token = product_token.strip()
+
+    if not account_id or not product_token:
+        return None
+
+    payload: Dict[str, Any] = {
+        "account_id": account_id,
+        "product_token": product_token,
+    }
+
+    api_base_url = config_data.get("license_api_base_url")
+    if isinstance(api_base_url, str) and api_base_url.strip():
+        payload["api_base_url"] = api_base_url.strip()
+
+    return payload
 
 
 def _ensure_payload_is_authenticated(payload: Dict[str, Any]) -> None:

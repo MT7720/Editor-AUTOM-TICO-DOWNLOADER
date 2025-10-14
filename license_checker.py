@@ -11,7 +11,6 @@ import time
 import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
-from tkinter import filedialog, messagebox
 from typing import Optional
 
 import requests
@@ -53,78 +52,7 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=2)
 def get_license_service_credentials() -> LicenseServiceCredentials:
     """Obtém as credenciais do serviço de licenças a partir do canal seguro."""
 
-    try:
-        return load_license_secrets()
-    except SecretLoaderError as exc:
-        interactive_credentials = _prompt_for_local_bundle(str(exc))
-        if interactive_credentials:
-            return interactive_credentials
-
-        raise RuntimeError(
-            "Não foi possível carregar as credenciais do serviço de licenças. "
-            "Certifique-se de que o bundle seguro foi provisionado pelo broker. "
-            f"Detalhes: {exc}"
-        ) from exc
-
-
-def _prompt_for_local_bundle(error_message: str) -> Optional[LicenseServiceCredentials]:
-    """Solicita ao utilizador um ficheiro local com o bundle de credenciais."""
-
-    try:
-        root = tk.Tk()
-        root.withdraw()
-    except tk.TclError:
-        return None
-
-    message = (
-        "Não foi possível localizar as credenciais necessárias para contactar o "
-        "Keygen. Se tiver recebido um ficheiro JSON com o bundle assinado, "
-        "seleccione-o abaixo.\n\nDetalhes técnicos: "
-        f"{error_message}"
-    )
-
-    should_open = messagebox.askyesno(
-        "Bundle do serviço de licenças",
-        message,
-        icon=messagebox.QUESTION,
-        parent=root,
-    )
-
-    credentials: Optional[LicenseServiceCredentials] = None
-    while should_open and credentials is None:
-        bundle_path = filedialog.askopenfilename(
-            title="Seleccione o ficheiro de credenciais",  # type: ignore[arg-type]
-            filetypes=[("JSON", "*.json"), ("Todos os ficheiros", "*.*")],
-            parent=root,
-        )
-
-        if not bundle_path:
-            break
-
-        os.environ["KEYGEN_LICENSE_BUNDLE_PATH"] = bundle_path
-        os.environ.pop("KEYGEN_LICENSE_BUNDLE", None)
-
-        try:
-            credentials = load_license_secrets()
-        except SecretLoaderError as exc:
-            should_open = messagebox.askretrycancel(
-                "Bundle inválido",
-                (
-                    "O ficheiro seleccionado não pôde ser carregado. "
-                    "Verifique se contém JSON válido com 'account_id', 'product_token' "
-                    f"e metadados autenticados.\n\nErro original: {exc}"
-                ),
-                parent=root,
-            )
-        else:
-            messagebox.showinfo(
-                "Credenciais carregadas",
-                "O bundle de credenciais foi carregado com sucesso.",
-                parent=root,
-            )
-
-    root.destroy()
-    return credentials
+    return load_license_secrets()
 
 
 def get_api_base_url() -> str:
@@ -135,35 +63,92 @@ def get_product_token() -> str:
     return get_license_service_credentials().product_token
 
 class CustomLicenseDialog(ttk.Toplevel):
-    def __init__(self, parent):
+    """Janela modal responsável por recolher a chave e ativar a licença."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        fingerprint: str,
+        activation_timeout: Optional[int] = None,
+        initial_status: Optional[str] = None,
+    ) -> None:
         super().__init__(parent)
         self.transient(parent)
         self.title("Ativação de Licença")
-        self.result = None
         self.resizable(False, False)
+        self.result_data = None
+        self.result_message = None
+        self.cancelled = False
+        self._fingerprint = fingerprint
+        self._activation_timeout = activation_timeout
+        self._future = None
+        self._timeout_notified = False
+        self._start_time = None
+
         try:
             self.iconbitmap(ICON_FILE)
         except tk.TclError:
             print(f"Aviso: Não foi possível carregar o ícone: {ICON_FILE}")
+
         main_frame = ttk.Frame(self, padding=20)
         main_frame.pack(fill=BOTH, expand=True)
-        header_label = ttk.Label(main_frame, text="Ativação do Produto", font=("Segoe UI", 14, "bold"), bootstyle="primary")
+
+        header_label = ttk.Label(
+            main_frame,
+            text="Ativação do Produto",
+            font=("Segoe UI", 14, "bold"),
+            bootstyle="primary",
+        )
         header_label.pack(pady=(0, 5))
-        info_label = ttk.Label(main_frame, text="Por favor, insira a sua chave de licença:", font=("Segoe UI", 10))
+
+        info_label = ttk.Label(
+            main_frame,
+            text="Introduza a sua chave de licença para validar o acesso.",
+            font=("Segoe UI", 10),
+        )
         info_label.pack(pady=(0, 15))
+
         self.entry = ttk.Entry(main_frame, width=50, font=("Segoe UI", 10))
-        self.entry.pack(pady=(0, 20), ipady=4)
+        self.entry.pack(pady=(0, 12), ipady=4)
         self.entry.focus_set()
+
+        self.status_label = ttk.Label(
+            main_frame,
+            text="",
+            font=("Segoe UI", 9),
+            wraplength=420,
+            justify=LEFT,
+        )
+        self.status_label.pack(fill=X, pady=(0, 10))
+
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill='x')
+        button_frame.pack(fill="x")
         ttk.Frame(button_frame).pack(side=LEFT, expand=True)
-        cancel_button = ttk.Button(button_frame, text="Cancelar", width=10, command=self.on_cancel, bootstyle="secondary")
-        cancel_button.pack(side=RIGHT, padx=(10, 0))
-        ok_button = ttk.Button(button_frame, text="Ativar", width=10, command=self.on_ok, bootstyle="success")
-        ok_button.pack(side=RIGHT)
+
+        self.cancel_button = ttk.Button(
+            button_frame,
+            text="Cancelar",
+            width=10,
+            command=self.on_cancel,
+            bootstyle="secondary",
+        )
+        self.cancel_button.pack(side=RIGHT, padx=(10, 0))
+
+        self.ok_button = ttk.Button(
+            button_frame,
+            text="Ativar",
+            width=10,
+            command=self.on_ok,
+            bootstyle="success",
+        )
+        self.ok_button.pack(side=RIGHT)
+
         self.protocol("WM_DELETE_WINDOW", self.on_cancel)
         self.bind("<Return>", self.on_ok)
         self.bind("<Escape>", self.on_cancel)
+
+        self._update_status(initial_status or "", "secondary")
+
         self.update_idletasks()
         parent_x, parent_y = parent.winfo_x(), parent.winfo_y()
         parent_w, parent_h = parent.winfo_width(), parent.winfo_height()
@@ -174,12 +159,77 @@ class CustomLicenseDialog(ttk.Toplevel):
         self.grab_set()
         self.wait_window(self)
 
+    def _update_status(self, message: str, style: str) -> None:
+        self.status_label.configure(text=message, bootstyle=style)
+
+    def _toggle_inputs(self, enabled: bool) -> None:
+        state = NORMAL if enabled else DISABLED
+        self.entry.configure(state=state)
+        self.ok_button.configure(state=state)
+        self.cancel_button.configure(state=NORMAL)
+
     def on_ok(self, event=None):
-        self.result = self.entry.get()
-        self.destroy()
+        if self._future is not None:
+            return
+
+        license_key = (self.entry.get() or "").strip()
+        if not license_key:
+            self._update_status("Informe uma chave de licença para continuar.", "danger")
+            return
+
+        self._start_activation(license_key)
+
+    def _start_activation(self, license_key: str) -> None:
+        self._toggle_inputs(False)
+        self._update_status("A contactar o serviço de licenças...", "info")
+        self._future = _EXECUTOR.submit(activate_new_license, license_key, self._fingerprint)
+        self._start_time = time.monotonic()
+        self.after(150, self._poll_future)
+
+    def _poll_future(self) -> None:
+        if self._future is None:
+            return
+
+        if self._future.done():
+            try:
+                data, message = self._future.result()
+            except Exception as exc:  # pragma: no cover - cenário inesperado
+                self._handle_failure(f"Erro inesperado durante a ativação: {exc}")
+                return
+
+            if data:
+                self.result_data = data
+                self.result_message = message
+                self.destroy()
+                return
+
+            self._handle_failure(message or "Falha na ativação da licença.")
+            return
+
+        if (
+            self._activation_timeout
+            and not self._timeout_notified
+            and self._start_time is not None
+            and (time.monotonic() - self._start_time) >= self._activation_timeout
+        ):
+            self._timeout_notified = True
+            self._update_status(
+                "A ativação está a demorar mais do que o esperado. Verifique a ligação e aguarde mais alguns instantes.",
+                "warning",
+            )
+
+        self.after(150, self._poll_future)
+
+    def _handle_failure(self, message: str) -> None:
+        self._future = None
+        self._timeout_notified = False
+        self._toggle_inputs(True)
+        self._update_status(message, "danger")
 
     def on_cancel(self, event=None):
-        self.result = None
+        if self._future is not None and not self._future.done():
+            self._future.cancel()
+        self.cancelled = True
         self.destroy()
 
 def get_app_data_path():
@@ -324,11 +374,10 @@ def save_license_data(license_data, fingerprint):
         }
         with open(LICENSE_FILE_PATH, "w", encoding="utf-8") as f:
             json.dump(payload, f)
-    except Exception:
-        messagebox.showerror(
-            "Erro ao Guardar",
-            f"Não foi possível guardar o ficheiro de licença em:\n{LICENSE_FILE_PATH}",
-        )
+    except Exception as exc:  # pragma: no cover - erro inesperado de IO
+        raise RuntimeError(
+            f"Não foi possível guardar o ficheiro de licença em: {LICENSE_FILE_PATH}"
+        ) from exc
 
 
 def load_license_data(fingerprint):
@@ -355,22 +404,6 @@ def load_license_data(fingerprint):
     except (KeyError, binascii.Error, InvalidTag, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise LicenseTamperedError("Os dados de licença guardados foram adulterados.") from exc
 
-def _set_wait_state(window, enabled):
-    """Atualiza o cursor e o estado de interação da janela principal."""
-    try:
-        window.config(cursor="watch" if enabled else "")
-    except tk.TclError:
-        pass
-
-    try:
-        window.attributes("-disabled", enabled)
-    except tk.TclError:
-        # Nem todas as plataformas suportam esta flag; ignoramos silenciosamente.
-        pass
-
-    window.update_idletasks()
-
-
 def check_license(parent_window, activation_timeout=15):
     """
     Função principal corrigida.
@@ -379,122 +412,57 @@ def check_license(parent_window, activation_timeout=15):
     3. Se não houver cache ou a revalidação falhar, pede uma nova ativação.
     """
     fingerprint = get_machine_fingerprint()
+    initial_status_messages: list[str] = []
+
     try:
         stored_data = load_license_data(fingerprint)
     except LicenseTamperedError:
-        messagebox.showwarning(
-            "Licença inválida",
-            "Os dados de licença guardados foram adulterados e precisarão de reativação.",
-            parent=parent_window,
-        )
+        print("Aviso: os dados de licença existentes estavam corrompidos; será necessária nova ativação.")
         stored_data = None
+        initial_status_messages.append(
+            "A licença guardada não pôde ser lida e será necessário introduzir uma nova chave."
+        )
 
     if stored_data:
         license_id = stored_data.get("data", {}).get("id")
         license_key = stored_data.get("meta", {}).get("key") if isinstance(stored_data, dict) else None
         if license_id:
-            # CORREÇÃO: Sempre revalida a licença do cache online
             validation_result, error = validate_license_with_id(license_id, fingerprint, license_key)
             if error:
-                messagebox.showwarning(
-                    "Falha na Validação",
-                    f"Não foi possível validar a licença guardada:\n{error}",
-                    parent=parent_window,
+                initial_status_messages.append(
+                    f"Não foi possível revalidar a licença existente: {error}"
                 )
             elif validation_result and validation_result.get("meta", {}).get("valid"):
-                print("Licença em cache revalidada online com sucesso.")
-
-                # <<< --- CORREÇÃO 1 --- >>>
-                # Atualiza o estado global para VÁLIDO
                 set_license_as_valid()
-                # <<< ------------------ >>>
+                return True, validation_result
 
-                return True, validation_result # Retorna os dados de validação atualizados
-    
-    # Se não há licença válida no cache, inicia o processo de ativação
-    while True:
-        dialog = CustomLicenseDialog(parent_window)
-        license_key_input = (dialog.result or "").strip()
-        
-        if not license_key_input:
-            messagebox.showwarning("Ativação Necessária", "É necessária uma chave de licença para usar este programa.", parent=parent_window)
-            return False, None
-        
-        wait_var = tk.BooleanVar(master=parent_window, value=False)
-        wait_state = {"data": None, "message": None, "cancelled": False}
+    try:
+        load_license_secrets()
+    except SecretLoaderError as exc:
+        print(f"Aviso: não foi possível carregar as credenciais do serviço de licenças: {exc}")
+        initial_status_messages.append(
+            "As credenciais do serviço de licenças não estão disponíveis. "
+            "Confirme a instalação do bundle seguro (detalhes abaixo)."
+        )
+        initial_status_messages.append(str(exc))
 
-        _set_wait_state(parent_window, True)
-        future = _EXECUTOR.submit(activate_new_license, license_key_input, fingerprint)
-        start_time = time.monotonic()
-        timeout_notified = False
+    dialog = CustomLicenseDialog(
+        parent_window,
+        fingerprint,
+        activation_timeout=activation_timeout,
+        initial_status="\n".join(initial_status_messages) if initial_status_messages else None,
+    )
 
-        def conclude(result_data=None, result_message=None, cancelled=False):
-            if wait_var.get():
-                return
+    if dialog.cancelled or not dialog.result_data:
+        return False, None
 
-            wait_state["data"] = result_data
-            wait_state["message"] = result_message
-            wait_state["cancelled"] = cancelled
-            _set_wait_state(parent_window, False)
-            wait_var.set(True)
+    activation_data = dialog.result_data
 
-        def poll_future():
-            nonlocal timeout_notified
+    try:
+        save_license_data(activation_data, fingerprint)
+    except RuntimeError as exc:
+        print(exc)
+        return False, None
 
-            if wait_var.get():
-                return
-
-            if future.done():
-                try:
-                    result_data, result_message = future.result()
-                except Exception as exc:
-                    result_data, result_message = None, f"Erro inesperado durante a ativação: {exc}"
-                conclude(result_data, result_message, cancelled=False)
-                return
-
-            if activation_timeout and not timeout_notified:
-                elapsed = time.monotonic() - start_time
-                if elapsed >= activation_timeout:
-                    _set_wait_state(parent_window, False)
-                    should_continue = messagebox.askretrycancel(
-                        "Ativação demorada",
-                        "A ativação está a demorar mais do que o esperado.\n"
-                        "Verifique a sua ligação e escolha 'Tentar novamente' para continuar a aguardar ou 'Cancelar' para interromper.",
-                        parent=parent_window,
-                    )
-
-                    if not should_continue:
-                        if not future.done():
-                            future.cancel()
-                        conclude(None, "Ativação cancelada pelo utilizador após tempo limite.", cancelled=True)
-                        return
-
-                    timeout_notified = True
-                    _set_wait_state(parent_window, True)
-
-            parent_window.after(150, poll_future)
-
-        parent_window.after(150, poll_future)
-        parent_window.wait_variable(wait_var)
-
-        if wait_state["cancelled"]:
-            messagebox.showinfo("Ativação cancelada", wait_state["message"], parent=parent_window)
-            return False, None
-
-        activation_data = wait_state["data"]
-        message = wait_state["message"]
-
-        if activation_data:
-            # O formato salvo é o mesmo do script antigo, garantindo consistência
-            save_license_data(activation_data, fingerprint)
-            
-            # <<< --- CORREÇÃO 2 --- >>>
-            # Atualiza o estado global para VÁLIDO após nova ativação
-            set_license_as_valid()
-            # <<< ------------------ >>>
-
-            messagebox.showinfo("Sucesso", message, parent=parent_window)
-            return True, activation_data
-        else:
-            if not messagebox.askretrycancel("Falha na Ativação", f"{message}\nDeseja tentar novamente?", parent=parent_window):
-                return False, None
+    set_license_as_valid()
+    return True, activation_data

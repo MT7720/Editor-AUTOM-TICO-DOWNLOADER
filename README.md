@@ -10,14 +10,15 @@ Para iniciar a interface gráfica, basta executar:
 python main.py
 ```
 
-> ℹ️ Antes de iniciar, certifique-se de que as credenciais do Keygen foram
-> provisionadas por um canal autenticado. Defina `KEYGEN_LICENSE_BUNDLE`,
-> `KEYGEN_LICENSE_BUNDLE_PATH` ou, como último recurso para desenvolvimento,
-> `KEYGEN_ACCOUNT_ID` e `KEYGEN_PRODUCT_TOKEN`. A partir desta versão, também é
-> possível distribuir um ficheiro `resources/license_credentials.json` (ou
-> apontar `license_credentials_path` em `video_editor_config.json`) com o bundle
-> assinado. Sem esses valores, o verificador de licença exibirá uma mensagem de
-> erro e encerrará a aplicação.
+> ℹ️ Antes de iniciar, garanta que o serviço de licenciamento possui acesso à
+> internet e que as credenciais do Keygen foram provisionadas por um canal
+> autenticado. É possível injectá-las via `KEYGEN_LICENSE_BUNDLE`,
+> `KEYGEN_LICENSE_BUNDLE_PATH` ou pelas variáveis `KEYGEN_ACCOUNT_ID` e
+> `KEYGEN_PRODUCT_TOKEN` (em ambientes controlados). Também pode preencher os
+> campos `license_account_id` e `license_product_token` de
+> `video_editor_config.json` ou distribuir o ficheiro
+> `resources/license_credentials.json`. Sem esses valores, a activação não
+> conseguirá contactar a API do Keygen.
 
 Durante o desenvolvimento, as verificações de integridade do `security.runtime_guard`
 ficam desativadas para permitir ajustes livres no código-fonte. A validação de hashes
@@ -55,34 +56,49 @@ inválido for informado, a etapa de build será interrompida com uma mensagem de
 
 ## Monitoramento da licença
 
-A activação do Editor Automático é agora completamente offline. Cada licença é emitida como um token compacto assinado com Ed25519 pela autoridade interna (`security/license_authority.py`). O cliente embute a chave pública correspondente e valida localmente o token, garantindo que:
+A activação do Editor Automático passou a ser exclusivamente online. Ao iniciar,
+o `license_checker.py` tenta reutilizar a activação guardada em `license.json` e
+revalidá-la junto da API do Keygen. Quando a licença não existe ou deixa de ser
+válida, o utilizador vê apenas o `CustomLicenseDialog`, que apresenta o campo de
+chave e chama `activate_new_license` imediatamente. Todas as mensagens de
+progresso e de erro são exibidas no próprio diálogo, eliminando caixas de
+mensagens adicionais.
 
-- o `fingerprint` da máquina está incluído no payload e coincide com o equipamento actual;
-- a data de expiração (`exp`) ainda não foi atingida; e
-- o número de série (`serial`) não aparece na lista de revogações distribuída.
+O ficheiro `license.json` continua cifrado com AES-GCM usando uma chave derivada
+do fingerprint da máquina. Qualquer alteração manual invalida o conteúdo e força
+uma nova activação online.
 
-O ficheiro `license.json` continua cifrado com AES-GCM usando uma chave derivada do fingerprint da máquina. Qualquer alteração manual invalida o ficheiro e força nova activação.
+### Provisionamento automático de credenciais
 
-> ⚠️ As credenciais do Keygen (account ID e product token) deixaram de ser
-> embutidas no código. O módulo `security.secrets` exige um pacote de segredos
-> entregue por canal autenticado (`KEYGEN_LICENSE_BUNDLE`,
-> `KEYGEN_LICENSE_BUNDLE_PATH` ou um bundle instalado em
-> `resources/license_credentials.json`). Consulte
-> [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md) para
-> instruções sobre como gerar o bundle, posicioná-lo com segurança no disco e
-> injectá-lo via variáveis de ambiente quando necessário.
+O módulo `security.secrets` procura as credenciais do Keygen nesta ordem:
+
+1. `KEYGEN_LICENSE_BUNDLE` com um JSON assinado em Base64.
+2. `KEYGEN_LICENSE_BUNDLE_PATH` apontando para o ficheiro JSON equivalente.
+3. Variáveis `KEYGEN_ACCOUNT_ID` e `KEYGEN_PRODUCT_TOKEN` (opção de
+   desenvolvimento ou CI controlado).
+4. Ficheiro empacotado `resources/license_credentials.json` com o bundle
+   provisionado.
+5. Campos `license_account_id`, `license_product_token` e opcionalmente
+   `license_api_base_url` em `video_editor_config.json`.
+
+Escolha uma das alternativas acima para que o cliente consiga contactar o Keygen
+sem intervenção manual. O guia
+[`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md) explica como
+gerar o bundle, distribuir os segredos e automatizar o abastecimento durante o
+build.
 
 ### Revogação e reemissão
 
-Para remover acessos comprometidos, distribua periodicamente um ficheiro JSON com a chave `revoked` contendo a lista de seriais revogados (por defeito em `security/license_revocations.json`). Também é possível apontar `LICENSE_REVOCATION_URL` para um endpoint HTTPS que devolve o mesmo formato. O `license_checker.py` actualiza e utiliza esta lista durante as verificações periódicas, encerrando a aplicação caso detecte um token revogado.
+Os mecanismos de revogação permanecem inalterados: distribua um ficheiro com a
+chave `revoked` (por defeito em `security/license_revocations.json`) ou exponha
+um endpoint configurado em `LICENSE_REVOCATION_URL`. Sempre que uma licença for
+reemitida, inclua o serial antigo na lista para impedir reutilizações.
 
-Quando for necessário reemitir uma licença, gere um novo token com `security.license_authority` e entregue-o ao cliente. Tokens antigos permanecerão inválidos assim que o número de série antigo constar da lista de revogação.
+### Migração de tokens offline
 
-### Fluxo de emissão offline
-
-O módulo `security/license_authority.py` inclui funções reutilizáveis e uma pequena ferramenta de automação para emissão em lote. Consulte [`docs/offline_license_issuance.md`](docs/offline_license_issuance.md) para instruções completas sobre a geração dos tokens, bem como orientações de migração para quem ainda utiliza chaves Keygen legadas.
-
-Para equipas que pretendem continuar a gerir clientes e políticas através do Keygen, o guia [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md) descreve como criar licenças na plataforma e gerar os tokens offline compatíveis com o Editor Automático.
+Implementações antigas que dependiam de tokens Ed25519 locais devem seguir as
+orientações de [`docs/offline_license_issuance.md`](docs/offline_license_issuance.md)
+para revogar os tokens herdados e migrar definitivamente para o fluxo online.
 
 ## Organização das abas do editor
 
