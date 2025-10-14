@@ -20,7 +20,7 @@ import time
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 import ttkbootstrap as ttk
@@ -2069,7 +2069,7 @@ class VideoEditorApp:
             self.available_encoders_cache = []
             if hasattr(self, 'video_codec_combobox'):
                 self.video_codec_combobox.config(values=["Automático", "CPU (libx264)"])
-            self.update_gpu_status(has_nvenc=False)
+            self.update_gpu_status(set())
         self._downloader_check_readiness()
             
     def ask_ffmpeg_path_manual(self):
@@ -2083,19 +2083,52 @@ class VideoEditorApp:
     def _check_available_encoders(self):
         # ... (sem alterações) ...
         self.available_encoders_cache = FFmpegManager.check_encoders(self.ffmpeg_path_var.get())
+        encoder_friendly_names = {
+            "h264_nvenc": ("nvidia", "GPU (NVIDIA NVENC H.264)"),
+            "hevc_nvenc": ("nvidia", "GPU (NVIDIA NVENC HEVC)"),
+            "av1_nvenc": ("nvidia", "GPU (NVIDIA NVENC AV1)"),
+            "h264_qsv": ("intel", "GPU (Intel QSV H.264)"),
+            "hevc_qsv": ("intel", "GPU (Intel QSV HEVC)"),
+            "av1_qsv": ("intel", "GPU (Intel QSV AV1)"),
+            "h264_amf": ("amd", "GPU (AMD AMF H.264)"),
+            "hevc_amf": ("amd", "GPU (AMD AMF HEVC)"),
+            "av1_amf": ("amd", "GPU (AMD AMF AV1)"),
+            "h264_vaapi": ("vaapi", "GPU (VAAPI H.264)"),
+            "hevc_vaapi": ("vaapi", "GPU (VAAPI HEVC)"),
+            "av1_vaapi": ("vaapi", "GPU (VAAPI AV1)"),
+        }
         options = ["Automático", "CPU (libx264)"]
-        has_nvenc = False
-        if "h264_nvenc" in self.available_encoders_cache: options.append("GPU (NVENC H.264)"); has_nvenc = True
-        if "hevc_nvenc" in self.available_encoders_cache: options.append("GPU (NVENC HEVC)"); has_nvenc = True
+        detected_hardware: Set[str] = set()
+        for encoder_name, (hardware_key, friendly_label) in encoder_friendly_names.items():
+            if encoder_name in self.available_encoders_cache:
+                options.append(friendly_label)
+                detected_hardware.add(hardware_key)
         if hasattr(self, 'video_codec_combobox'):
             self.video_codec_combobox.config(values=options)
             if self.video_codec_var.get() not in options: self.video_codec_var.set("Automático")
-        self.update_gpu_status(has_nvenc)
+        self.update_gpu_status(detected_hardware)
 
-    def update_gpu_status(self, has_nvenc: bool):
+    def update_gpu_status(self, hardware_support: Optional[Set[str]] = None):
         # ... (sem alterações) ...
-        if hasattr(self, 'gpu_status_label'):
-            self.gpu_status_label.config(text="✓ Placa de Vídeo NVIDIA (NVENC) detetada!" if has_nvenc else "! Nenhuma placa de vídeo com aceleração detetada (usando CPU).", bootstyle="success" if has_nvenc else "warning")
+        if not hasattr(self, 'gpu_status_label'):
+            return
+        hardware_support = hardware_support or set()
+        if hardware_support:
+            status_lines = []
+            if "nvidia" in hardware_support:
+                status_lines.append("✓ NVIDIA NVENC disponível")
+            if "intel" in hardware_support:
+                status_lines.append("✓ Intel Quick Sync Video disponível")
+            if "amd" in hardware_support:
+                status_lines.append("✓ AMD AMF disponível")
+            if "vaapi" in hardware_support:
+                status_lines.append("✓ Aceleração VAAPI disponível")
+            status_text = "\n".join(status_lines)
+            bootstyle = "success"
+        else:
+            status_text = "⚠️ Nenhuma placa de vídeo com aceleração detetada (usando CPU)."
+            bootstyle = "warning"
+        self.gpu_status_label.config(text=status_text, bootstyle=bootstyle)
 
     def validate_inputs(self) -> bool:
         # ... (sem alterações) ...
