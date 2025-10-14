@@ -79,6 +79,9 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
         value=config.get("last_download_folder", str(Path.home() / "Downloads"))
     )
     app.download_format_var = ttk.StringVar(value="MP4")
+    app.download_playlist_var = ttk.BooleanVar(value=config.get("download_playlist_enabled", False))
+    playlist_limit = config.get("download_playlist_limit", "Todos") or "Todos"
+    app.playlist_items_limit_var = ttk.StringVar(value=str(playlist_limit))
 
     app.intro_enabled_var = ttk.BooleanVar(value=config.get("intro_enabled", False))
     app.intro_default_text_var = ttk.StringVar(value=config.get("intro_default_text", ""))
@@ -169,6 +172,8 @@ def initialize_state(app: Any) -> None:
     app.presenter_processed_frame_path = None
     app.download_thread = None
     app.yt_dlp_engine_path = None
+    app.downloader_total_items_expected = 0
+    app.downloader_total_items_completed = 0
 
 
 __all__ = ["initialize_variables", "initialize_state"]

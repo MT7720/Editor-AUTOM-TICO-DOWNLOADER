@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 from pyvirtualdisplay import Display
 from main import VideoEditorApp, SUBTITLE_POSITIONS
@@ -76,3 +78,90 @@ def test_update_ui_for_media_type(app):
     assert _visible(app.batch_hierarchical_inputs_frame)
     assert _visible(app.video_settings_section)
     assert not _visible(app.slideshow_section)
+
+
+class _DummyStdout:
+    def __init__(self, lines):
+        self._lines = iter(lines)
+
+    def readline(self):
+        return next(self._lines, '')
+
+    def close(self):
+        pass
+
+
+def test_downloader_playlist_command_builds_playlist_args(monkeypatch, app):
+    captured = {}
+
+    class _DummyProcess:
+        def __init__(self, command, *args, **kwargs):
+            captured['command'] = command
+            self.stdout = _DummyStdout([
+                "[download] Downloading item 1 of 2",
+                "__ITEM_DONE__video1",
+                "__ITEM_DONE__video2",
+                '',
+            ])
+            self.returncode = 0
+
+        def wait(self):
+            return self.returncode
+
+    monkeypatch.setattr(subprocess, "Popen", _DummyProcess)
+
+    app.yt_dlp_engine_path = "yt-dlp"
+    app.ffmpeg_path_var.set("/usr/bin/ffmpeg")
+    app.download_output_path_var.set("/tmp")
+    app.downloader_total_items_expected = 2
+    app.downloader_total_items_completed = 0
+
+    app._downloader_download_single_video(
+        "https://example.com/playlist",
+        expected_items=2,
+        playlist_enabled=True,
+        playlist_limit=2,
+    )
+
+    command = captured['command']
+    assert '--no-playlist' not in command
+    assert '--yes-playlist' in command
+    assert '--playlist-items' in command
+    idx = command.index('--playlist-items')
+    assert command[idx + 1] == '1-2'
+    assert app.downloader_total_items_completed >= 2
+
+
+def test_downloader_single_video_uses_no_playlist(monkeypatch, app):
+    captured = {}
+
+    class _DummyProcess:
+        def __init__(self, command, *args, **kwargs):
+            captured['command'] = command
+            self.stdout = _DummyStdout([
+                "__ITEM_DONE__single",
+                '',
+            ])
+            self.returncode = 0
+
+        def wait(self):
+            return self.returncode
+
+    monkeypatch.setattr(subprocess, "Popen", _DummyProcess)
+
+    app.yt_dlp_engine_path = "yt-dlp"
+    app.ffmpeg_path_var.set("/usr/bin/ffmpeg")
+    app.download_output_path_var.set("/tmp")
+    app.downloader_total_items_expected = 1
+    app.downloader_total_items_completed = 0
+
+    app._downloader_download_single_video(
+        "https://example.com/watch?v=1",
+        expected_items=1,
+        playlist_enabled=False,
+        playlist_limit=None,
+    )
+
+    command = captured['command']
+    assert '--no-playlist' in command
+    assert '--yes-playlist' not in command
