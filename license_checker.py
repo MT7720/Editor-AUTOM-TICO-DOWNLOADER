@@ -1,20 +1,36 @@
-import os
-import sys
-import requests
+import base64
+import binascii
 import hashlib
-import platform
-import subprocess
-import tkinter as tk
-from tkinter import messagebox
 import json
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from concurrent.futures import ThreadPoolExecutor
+import os
+import platform
+import secrets
+import subprocess
+import sys
 import time
+import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor
+from tkinter import messagebox
+
+import requests
+import ttkbootstrap as ttk
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from ttkbootstrap.constants import *
 
 # --- NOVO IMPORT ---
 # Importa a função para atualizar o estado da licença
 from security.license_manager import set_license_as_valid
+
+
+class LicenseTamperedError(Exception):
+    """Sinaliza que o ficheiro de licença foi adulterado ou corrompido."""
+
+
+def _derive_encryption_key(fingerprint: str) -> bytes:
+    """Deriva uma chave simétrica a partir do fingerprint da máquina."""
+
+    return hashlib.sha256(fingerprint.encode()).digest()
 # --------------------
 
 
@@ -188,20 +204,49 @@ def activate_new_license(license_key, fingerprint):
         return None, "Não foi possível ativar esta máquina. A licença pode estar em uso ou sem vagas."
 
 
-def save_license_data(license_data):
+def save_license_data(license_data, fingerprint):
     try:
-        with open(LICENSE_FILE_PATH, "w", encoding='utf-8') as f:
-            json.dump(license_data, f, indent=2)
+        key = _derive_encryption_key(fingerprint)
+        nonce = secrets.token_bytes(12)
+        aes = AESGCM(key)
+        plaintext = json.dumps(license_data).encode("utf-8")
+        ciphertext = aes.encrypt(nonce, plaintext, None)
+        payload = {
+            "nonce": base64.b64encode(nonce).decode("ascii"),
+            "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+        }
+        with open(LICENSE_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
     except Exception:
-        messagebox.showerror("Erro ao Guardar", f"Não foi possível guardar o ficheiro de licença em:\n{LICENSE_FILE_PATH}")
+        messagebox.showerror(
+            "Erro ao Guardar",
+            f"Não foi possível guardar o ficheiro de licença em:\n{LICENSE_FILE_PATH}",
+        )
 
-def load_license_data():
-    if os.path.exists(LICENSE_FILE_PATH):
-        try:
-            with open(LICENSE_FILE_PATH, "r", encoding='utf-8') as f:
-                return json.load(f)
-        except Exception: return None
-    return None
+
+def load_license_data(fingerprint):
+    if not os.path.exists(LICENSE_FILE_PATH):
+        return None
+
+    try:
+        with open(LICENSE_FILE_PATH, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except OSError:
+        return None
+    except json.JSONDecodeError as exc:
+        raise LicenseTamperedError("Formato do ficheiro de licença inválido.") from exc
+
+    try:
+        nonce_b64 = payload["nonce"]
+        ciphertext_b64 = payload["ciphertext"]
+        nonce = base64.b64decode(nonce_b64)
+        ciphertext = base64.b64decode(ciphertext_b64)
+        key = _derive_encryption_key(fingerprint)
+        aes = AESGCM(key)
+        plaintext = aes.decrypt(nonce, ciphertext, None)
+        return json.loads(plaintext.decode("utf-8"))
+    except (KeyError, binascii.Error, InvalidTag, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise LicenseTamperedError("Os dados de licença guardados foram adulterados.") from exc
 
 def _set_wait_state(window, enabled):
     """Atualiza o cursor e o estado de interação da janela principal."""
@@ -227,7 +272,15 @@ def check_license(parent_window, activation_timeout=15):
     3. Se não houver cache ou a revalidação falhar, pede uma nova ativação.
     """
     fingerprint = get_machine_fingerprint()
-    stored_data = load_license_data()
+    try:
+        stored_data = load_license_data(fingerprint)
+    except LicenseTamperedError:
+        messagebox.showwarning(
+            "Licença inválida",
+            "Os dados de licença guardados foram adulterados e precisarão de reativação.",
+            parent=parent_window,
+        )
+        stored_data = None
 
     if stored_data:
         license_id = stored_data.get("data", {}).get("id")
@@ -326,7 +379,7 @@ def check_license(parent_window, activation_timeout=15):
 
         if activation_data:
             # O formato salvo é o mesmo do script antigo, garantindo consistência
-            save_license_data(activation_data)
+            save_license_data(activation_data, fingerprint)
             
             # <<< --- CORREÇÃO 2 --- >>>
             # Atualiza o estado global para VÁLIDO após nova ativação

@@ -102,8 +102,9 @@ class VideoEditorApp:
         if license_data is not None:
             self.license_data = license_data
         else:
+            fingerprint = license_checker.get_machine_fingerprint()
             try:
-                self.license_data = license_checker.load_license_data()
+                self.license_data = license_checker.load_license_data(fingerprint)
             except license_checker.LicenseTamperedError:
                 Messagebox.show_warning(
                     "Licença inválida",
