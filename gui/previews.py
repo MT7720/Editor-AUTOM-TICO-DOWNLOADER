@@ -10,7 +10,15 @@ from PIL import Image, ImageDraw, ImageTk
 
 from .constants import SUBTITLE_POSITIONS
 from .utils import logger
-from video_processing.banner import BannerRenderConfig, BannerRenderResult, generate_banner_image
+from video_processing.banner import (
+    BANNER_HEIGHT_RATIO,
+    BannerRenderConfig,
+    BannerRenderResult,
+    generate_banner_image,
+)
+
+
+DEFAULT_FONT_SCALE = BannerRenderConfig.__dataclass_fields__['font_scale'].default
 
 
 class BannerPreview(tk.Canvas):
@@ -38,6 +46,8 @@ class BannerPreview(tk.Canvas):
         font_color: str,
         enabled: bool,
         video_resolution: Tuple[int, int],
+        height_ratio: float = BANNER_HEIGHT_RATIO,
+        font_scale: float = DEFAULT_FONT_SCALE,
         font_path: Optional[str] = None,
         outline_enabled: bool = False,
         outline_color: str = "#000000",
@@ -56,6 +66,8 @@ class BannerPreview(tk.Canvas):
             'font_color': font_color,
             'enabled': enabled,
             'video_resolution': video_resolution,
+            'height_ratio': height_ratio,
+            'font_scale': font_scale,
             'font_path': font_path,
             'outline_enabled': outline_enabled,
             'outline_color': outline_color,
@@ -100,6 +112,8 @@ class BannerPreview(tk.Canvas):
                 gradient_start=gradient_start or solid_color or "#333333",
                 gradient_end=gradient_end or solid_color or "#333333",
                 font_color=font_color or "#FFFFFF",
+                height_ratio=height_ratio,
+                font_scale=font_scale,
                 font_path=font_path,
                 outline_enabled=outline_enabled,
                 outline_color=outline_color or "#000000",

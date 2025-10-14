@@ -112,6 +112,8 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
     app.banner_gradient_end_var = ttk.StringVar(value=config.get("banner_gradient_end", "#DD2476"))
     app.banner_font_color_var = ttk.StringVar(value=config.get("banner_font_color", "#FFFFFF"))
     app.banner_duration_var = ttk.DoubleVar(value=config.get("banner_duration", 5.0))
+    app.banner_height_ratio_var = ttk.DoubleVar(value=config.get("banner_height_ratio", 0.18))
+    app.banner_font_scale_var = ttk.DoubleVar(value=config.get("banner_font_scale", 0.45))
     app.banner_texts = dict(config.get("banner_texts") or {})
     app.banner_outline_enabled_var = ttk.BooleanVar(value=config.get("banner_outline_enabled", False))
     app.banner_outline_color_var = ttk.StringVar(value=config.get("banner_outline_color", "#000000"))

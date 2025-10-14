@@ -9,7 +9,7 @@ from queue import Queue
 from typing import Any, Dict, List, Optional, Tuple
 import threading
 
-from .banner import BannerRenderConfig, generate_banner_image
+from .banner import BANNER_HEIGHT_RATIO, BannerRenderConfig, generate_banner_image
 from .intro import _maybe_create_intro_clip, _combine_intro_with_main, _prepare_intro_text
 from .shared import (
     _escape_ffmpeg_path,
@@ -21,6 +21,9 @@ from .shared import (
 from .utils import _parse_resolution, _create_styled_ass_from_srt
 
 __all__ = ["_perform_final_pass"]
+
+
+DEFAULT_BANNER_FONT_SCALE = BannerRenderConfig.__dataclass_fields__['font_scale'].default
 
 
 def _prepare_banner_overlay(
@@ -68,6 +71,15 @@ def _prepare_banner_overlay(
     if isinstance(subtitle_style, dict):
         font_path = subtitle_style.get('font_file')
 
+    try:
+        height_ratio = float(params.get('banner_height_ratio', BANNER_HEIGHT_RATIO))
+    except (TypeError, ValueError):
+        height_ratio = BANNER_HEIGHT_RATIO
+    try:
+        font_scale = float(params.get('banner_font_scale', DEFAULT_BANNER_FONT_SCALE))
+    except (TypeError, ValueError):
+        font_scale = DEFAULT_BANNER_FONT_SCALE
+
     render_config = BannerRenderConfig(
         text=final_text,
         video_width=max(1, int(video_w)),
@@ -85,6 +97,8 @@ def _prepare_banner_overlay(
         shadow_color=str(params.get('banner_shadow_color') or '#000000'),
         shadow_offset_x=float(params.get('banner_shadow_offset_x', 3.0) or 0.0),
         shadow_offset_y=float(params.get('banner_shadow_offset_y', 3.0) or 0.0),
+        height_ratio=height_ratio,
+        font_scale=font_scale,
     )
 
     try:
