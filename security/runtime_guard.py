@@ -105,10 +105,40 @@ def _load_hmac_key() -> Optional[bytes]:
     _hmac_key_cache = _get_embedded_hmac_key()
     return _hmac_key_cache
 
-def _calculate_file_hash(path: Path, algorithm: str) -> str:
+def _calculate_file_hash(path: Path, algorithm: str, normalize_newlines: bool) -> str:
     h = hashlib.new(algorithm)
     with path.open("rb") as file_handle:
-        h.update(file_handle.read().replace(b"\r\n", b"\n"))
+        if not normalize_newlines:
+            for chunk in iter(lambda: file_handle.read(65536), b""):
+                h.update(chunk)
+        else:
+            pending_carriage_return = False
+            while True:
+                chunk = file_handle.read(65536)
+                if not chunk:
+                    break
+
+                data = chunk
+                if pending_carriage_return:
+                    if data.startswith(b"\n"):
+                        h.update(b"\n")
+                        data = data[1:]
+                    else:
+                        h.update(b"\r")
+                    pending_carriage_return = False
+
+                if not data:
+                    continue
+
+                if data.endswith(b"\r"):
+                    pending_carriage_return = True
+                    data = data[:-1]
+
+                if data:
+                    h.update(data.replace(b"\r\n", b"\n"))
+
+            if pending_carriage_return:
+                h.update(b"\r")
     return h.hexdigest()
 
 def _verify_signature(expected_hash: str, signature: str) -> bool:
@@ -138,7 +168,9 @@ def _collect_resource_violations(manifest: Dict[str, object]) -> List[str]:
         if not path.exists():
             violations.append(f"Recurso não encontrado: {path}")
             continue
-        calculated_hash = _calculate_file_hash(path, algorithm)
+        normalize_raw = resource.get("normalize_newlines", False)
+        normalize_newlines = normalize_raw if isinstance(normalize_raw, bool) else False
+        calculated_hash = _calculate_file_hash(path, algorithm, normalize_newlines)
         if not hmac.compare_digest(calculated_hash, expected_hash):
             violations.append(f"Hash divergente para '{name}'")
     return violations
