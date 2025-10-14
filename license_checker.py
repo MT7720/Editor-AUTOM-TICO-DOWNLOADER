@@ -10,6 +10,7 @@ import json
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 # --- NOVO IMPORT ---
 # Importa a função para atualizar o estado da licença
@@ -171,7 +172,23 @@ def load_license_data():
         except Exception: return None
     return None
 
-def check_license(parent_window):
+def _set_wait_state(window, enabled):
+    """Atualiza o cursor e o estado de interação da janela principal."""
+    try:
+        window.config(cursor="watch" if enabled else "")
+    except tk.TclError:
+        pass
+
+    try:
+        window.attributes("-disabled", enabled)
+    except tk.TclError:
+        # Nem todas as plataformas suportam esta flag; ignoramos silenciosamente.
+        pass
+
+    window.update_idletasks()
+
+
+def check_license(parent_window, activation_timeout=15):
     """
     Função principal corrigida.
     1. Tenta carregar a licença do cache.
@@ -205,14 +222,69 @@ def check_license(parent_window):
             messagebox.showwarning("Ativação Necessária", "É necessária uma chave de licença para usar este programa.", parent=parent_window)
             return False, None
         
-        parent_window.config(cursor="watch")
+        wait_var = tk.BooleanVar(master=parent_window, value=False)
+        wait_state = {"data": None, "message": None, "cancelled": False}
+
+        _set_wait_state(parent_window, True)
         future = _EXECUTOR.submit(activate_new_license, license_key_input, fingerprint)
-        
-        while not future.done():
-            parent_window.update()
-        
-        parent_window.config(cursor="")
-        activation_data, message = future.result()
+        start_time = time.monotonic()
+        timeout_notified = False
+
+        def conclude(result_data=None, result_message=None, cancelled=False):
+            if wait_var.get():
+                return
+
+            wait_state["data"] = result_data
+            wait_state["message"] = result_message
+            wait_state["cancelled"] = cancelled
+            _set_wait_state(parent_window, False)
+            wait_var.set(True)
+
+        def poll_future():
+            nonlocal timeout_notified
+
+            if wait_var.get():
+                return
+
+            if future.done():
+                try:
+                    result_data, result_message = future.result()
+                except Exception as exc:
+                    result_data, result_message = None, f"Erro inesperado durante a ativação: {exc}"
+                conclude(result_data, result_message, cancelled=False)
+                return
+
+            if activation_timeout and not timeout_notified:
+                elapsed = time.monotonic() - start_time
+                if elapsed >= activation_timeout:
+                    _set_wait_state(parent_window, False)
+                    should_continue = messagebox.askretrycancel(
+                        "Ativação demorada",
+                        "A ativação está a demorar mais do que o esperado.\n"
+                        "Verifique a sua ligação e escolha 'Tentar novamente' para continuar a aguardar ou 'Cancelar' para interromper.",
+                        parent=parent_window,
+                    )
+
+                    if not should_continue:
+                        if not future.done():
+                            future.cancel()
+                        conclude(None, "Ativação cancelada pelo utilizador após tempo limite.", cancelled=True)
+                        return
+
+                    timeout_notified = True
+                    _set_wait_state(parent_window, True)
+
+            parent_window.after(150, poll_future)
+
+        parent_window.after(150, poll_future)
+        parent_window.wait_variable(wait_var)
+
+        if wait_state["cancelled"]:
+            messagebox.showinfo("Ativação cancelada", wait_state["message"], parent=parent_window)
+            return False, None
+
+        activation_data = wait_state["data"]
+        message = wait_state["message"]
 
         if activation_data:
             # O formato salvo é o mesmo do script antigo, garantindo consistência
