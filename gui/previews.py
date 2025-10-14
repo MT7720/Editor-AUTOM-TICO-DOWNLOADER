@@ -6,7 +6,7 @@ import os
 import tkinter as tk
 from typing import Any, Dict, Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageFilter, ImageTk
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageTk
 
 from .constants import SUBTITLE_POSITIONS
 from .utils import logger
@@ -140,9 +140,12 @@ class BannerPreview(tk.Canvas):
         canvas_w = max(1, canvas_w)
         canvas_h = max(1, canvas_h)
 
-        top_bg = (45, 51, 67)
-        bottom_bg = (20, 22, 32)
+        base = Image.new("RGBA", (canvas_w, canvas_h))
+
+        # Dramatic vertical gradient background with a bluish hue
         gradient_column = Image.new("RGBA", (1, canvas_h))
+        top_bg = (38, 52, 86)
+        bottom_bg = (9, 11, 22)
         gradient_data = []
         for y in range(canvas_h):
             mix = y / max(1, canvas_h - 1)
@@ -153,23 +156,59 @@ class BannerPreview(tk.Canvas):
         gradient_column.putdata(gradient_data)
         base = gradient_column.resize((canvas_w, canvas_h))
 
-        overlay = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-        overlay_draw = ImageDraw.Draw(overlay)
-        overlay_draw.ellipse(
+        # Add soft radial glows to give depth to the preview
+        glow_overlay = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow_overlay)
+        glow_draw.ellipse(
             (
-                -int(canvas_w * 0.3),
-                -int(canvas_h * 0.55),
-                int(canvas_w * 1.3),
-                int(canvas_h * 0.7),
+                -int(canvas_w * 0.35),
+                -int(canvas_h * 0.6),
+                int(canvas_w * 0.75),
+                int(canvas_h * 0.55),
             ),
-            fill=(255, 255, 255, 60),
+            fill=(120, 170, 255, 90),
         )
-        overlay_draw.rectangle(
-            (0, canvas_h - int(canvas_h * 0.25), canvas_w, canvas_h),
-            fill=(10, 12, 16, 160),
+        glow_draw.ellipse(
+            (
+                int(canvas_w * 0.25),
+                int(canvas_h * 0.25),
+                int(canvas_w * 1.2),
+                int(canvas_h * 1.25),
+            ),
+            fill=(180, 110, 255, 70),
         )
-        overlay = overlay.filter(ImageFilter.GaussianBlur(radius=40))
-        base = Image.alpha_composite(base, overlay)
+        glow_overlay = glow_overlay.filter(ImageFilter.GaussianBlur(radius=120))
+        base = Image.alpha_composite(base, glow_overlay)
+
+        # Subtle vignette for focus
+        vignette = Image.new("L", (canvas_w, canvas_h), 0)
+        vignette_draw = ImageDraw.Draw(vignette)
+        vignette_draw.ellipse(
+            (
+                -int(canvas_w * 0.25),
+                -int(canvas_h * 0.35),
+                int(canvas_w * 1.25),
+                int(canvas_h * 1.35),
+            ),
+            fill=255,
+        )
+        vignette = vignette.filter(ImageFilter.GaussianBlur(radius=140))
+        vignette_layer = Image.new("RGBA", (canvas_w, canvas_h), (10, 12, 18, 220))
+        vignette_layer.putalpha(ImageChops.invert(vignette))
+        base = Image.alpha_composite(base, vignette_layer)
+
+        # Light strips suggesting studio lighting
+        strips_overlay = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        strips_draw = ImageDraw.Draw(strips_overlay)
+        strip_height = max(6, canvas_h // 18)
+        for i in range(5):
+            y = int(canvas_h * 0.18) + i * int(strip_height * 1.8)
+            strips_draw.rectangle(
+                (int(-canvas_w * 0.1), y, int(canvas_w * 1.1), y + strip_height),
+                fill=(255, 255, 255, max(12, 40 - i * 5)),
+            )
+        strips_overlay = strips_overlay.filter(ImageFilter.GaussianBlur(radius=25))
+        base = Image.alpha_composite(base, strips_overlay)
 
         video_w, video_h = video_size
         if video_w <= 0:
@@ -194,75 +233,117 @@ class BannerPreview(tk.Canvas):
         frame_bbox = (frame_x0, frame_y0, frame_x0 + frame_width, frame_y0 + frame_height)
 
         frame_gradient_column = Image.new("RGBA", (1, frame_height))
-        frame_top = (30, 33, 46)
-        frame_bottom = (12, 12, 18)
+        frame_top = (60, 64, 92)
+        frame_bottom = (20, 24, 36)
         frame_gradient_data = []
         for y in range(frame_height):
             mix = y / max(1, frame_height - 1)
             r = int(frame_top[0] * (1 - mix) + frame_bottom[0] * mix)
             g = int(frame_top[1] * (1 - mix) + frame_bottom[1] * mix)
             b = int(frame_top[2] * (1 - mix) + frame_bottom[2] * mix)
-            frame_gradient_data.append((r, g, b, 255))
+            frame_gradient_data.append((r, g, b, 245))
         frame_gradient_column.putdata(frame_gradient_data)
         frame_body = frame_gradient_column.resize((frame_width, frame_height))
 
-        radius = max(10, int(round(min(frame_width, frame_height) * 0.06)))
+        radius = max(12, int(round(min(frame_width, frame_height) * 0.08)))
         frame_mask = Image.new("L", (frame_width, frame_height), 0)
         mask_draw = ImageDraw.Draw(frame_mask)
         mask_draw.rounded_rectangle(
             (0, 0, frame_width - 1, frame_height - 1), fill=255, radius=radius
         )
 
-        frame_with_border = Image.new("RGBA", (frame_width, frame_height), (0, 0, 0, 0))
-        frame_with_border.paste(frame_body, mask=frame_mask)
-        frame_draw = ImageDraw.Draw(frame_with_border)
+        frame_surface = Image.new("RGBA", (frame_width, frame_height), (0, 0, 0, 0))
+        frame_surface.paste(frame_body, mask=frame_mask)
+        frame_draw = ImageDraw.Draw(frame_surface)
         frame_draw.rounded_rectangle(
             (0, 0, frame_width - 1, frame_height - 1),
-            outline=(255, 255, 255, 40),
-            width=2,
+            outline=(196, 210, 255, 120),
+            width=3,
             radius=radius,
         )
-        inner_radius = max(4, radius - 4)
         frame_draw.rounded_rectangle(
-            (3, 3, frame_width - 4, frame_height - 4),
-            outline=(255, 255, 255, 20),
-            width=1,
-            radius=inner_radius,
+            (4, 4, frame_width - 5, frame_height - 5),
+            outline=(20, 22, 35, 180),
+            width=2,
+            radius=max(6, radius - 6),
+        )
+
+        # Stylized "screen" with subtle gradient and spotlight
+        screen_margin_x = max(12, int(frame_width * 0.07))
+        screen_margin_y = max(12, int(frame_height * 0.1))
+        screen_width = max(20, frame_width - screen_margin_x * 2)
+        screen_height = max(20, frame_height - screen_margin_y * 2)
+        screen = Image.new("RGBA", (screen_width, screen_height))
+        screen_gradient_column = Image.new("RGBA", (1, screen_height))
+        screen_top = (26, 29, 44)
+        screen_bottom = (10, 11, 20)
+        screen_gradient = []
+        for y in range(screen_height):
+            mix = y / max(1, screen_height - 1)
+            r = int(screen_top[0] * (1 - mix) + screen_bottom[0] * mix)
+            g = int(screen_top[1] * (1 - mix) + screen_bottom[1] * mix)
+            b = int(screen_top[2] * (1 - mix) + screen_bottom[2] * mix)
+            screen_gradient.append((r, g, b, 240))
+        screen_gradient_column.putdata(screen_gradient)
+        screen = screen_gradient_column.resize((screen_width, screen_height))
+
+        screen_overlay = Image.new("RGBA", (screen_width, screen_height), (0, 0, 0, 0))
+        screen_draw = ImageDraw.Draw(screen_overlay)
+        screen_draw.ellipse(
+            (
+                -int(screen_width * 0.1),
+                int(-screen_height * 0.35),
+                int(screen_width * 1.2),
+                int(screen_height * 0.7),
+            ),
+            fill=(180, 210, 255, 90),
+        )
+        screen_draw.rectangle(
+            (0, int(screen_height * 0.6), screen_width, screen_height),
+            fill=(8, 10, 18, 140),
+        )
+        screen_overlay = screen_overlay.filter(ImageFilter.GaussianBlur(radius=50))
+        screen = Image.alpha_composite(screen, screen_overlay)
+
+        frame_surface.paste(
+            screen,
+            (screen_margin_x, screen_margin_y),
         )
 
         highlight = Image.new("RGBA", (frame_width, frame_height), (0, 0, 0, 0))
         highlight_draw = ImageDraw.Draw(highlight)
         highlight_draw.rectangle(
-            (0, 0, frame_width, int(frame_height * 0.18)), fill=(255, 255, 255, 40)
+            (0, 0, frame_width, int(frame_height * 0.18)), fill=(255, 255, 255, 55)
         )
-        highlight = highlight.filter(ImageFilter.GaussianBlur(radius=18))
-        frame_with_border = Image.alpha_composite(frame_with_border, highlight)
+        highlight = highlight.filter(ImageFilter.GaussianBlur(radius=22))
+        frame_surface = Image.alpha_composite(frame_surface, highlight)
 
+        # Elevated shadow for glass effect
         shadow = Image.new(
-            "RGBA", (frame_width + 16, frame_height + 16), (0, 0, 0, 0)
+            "RGBA", (frame_width + 36, frame_height + 36), (0, 0, 0, 0)
         )
         shadow_draw = ImageDraw.Draw(shadow)
         shadow_draw.rounded_rectangle(
-            (8, 8, frame_width + 8, frame_height + 8),
-            fill=(0, 0, 0, 140),
-            radius=radius + 4,
+            (18, 20, frame_width + 18, frame_height + 20),
+            fill=(0, 0, 0, 170),
+            radius=radius + 6,
         )
-        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=18))
-        base.alpha_composite(shadow, (frame_x0 - 8, frame_y0 - 2))
-        base.alpha_composite(frame_with_border, (frame_x0, frame_y0))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=28))
+        base.alpha_composite(shadow, (frame_x0 - 18, frame_y0 - 14))
+        base.alpha_composite(frame_surface, (frame_x0, frame_y0))
 
         if banner_image is not None and banner_image.width > 0 and banner_image.height > 0:
-            horizontal_padding = max(10, int(round(frame_width * 0.04)))
-            right_padding = max(10, int(round(frame_width * 0.04)))
-            vertical_padding = max(10, int(round(frame_height * 0.04)))
-            bottom_padding = max(10, int(round(frame_height * 0.04)))
+            horizontal_padding = max(16, int(round(frame_width * 0.09)))
+            right_padding = horizontal_padding
+            vertical_padding = max(16, int(round(frame_height * 0.12)))
+            bottom_padding = max(16, int(round(frame_height * 0.12)))
 
             max_banner_width = min(
-                int(frame_width * 0.92),
+                int(frame_width * 0.86),
                 max(1, frame_width - horizontal_padding - right_padding),
             )
             max_banner_height = min(
-                int(frame_height * 0.26),
+                int(frame_height * 0.4),
                 max(1, frame_height - vertical_padding - bottom_padding),
             )
             scale = min(
@@ -278,28 +359,51 @@ class BannerPreview(tk.Canvas):
                 banner_size, Image.Resampling.LANCZOS
             )
 
-            banner_radius = max(8, int(round(banner_size[1] * 0.25)))
+            banner_radius = max(10, int(round(banner_size[1] * 0.3)))
+
+            glow_pad_x = max(10, int(banner_size[0] * 0.15))
+            glow_pad_y = max(10, int(banner_size[1] * 0.4))
+            glow_rect = Image.new(
+                "RGBA",
+                (banner_size[0] + glow_pad_x * 2, banner_size[1] + glow_pad_y * 2),
+                (0, 0, 0, 0),
+            )
+            glow_draw = ImageDraw.Draw(glow_rect)
+            glow_draw.rounded_rectangle(
+                (0, glow_pad_y // 2, glow_rect.width, glow_rect.height),
+                fill=(90, 130, 255, 110),
+                radius=banner_radius + glow_pad_y // 3,
+            )
+            glow_rect = glow_rect.filter(ImageFilter.GaussianBlur(radius=35))
+
             banner_shadow = Image.new(
                 "RGBA",
-                (banner_size[0] + 12, banner_size[1] + 12),
+                (banner_size[0] + 28, banner_size[1] + 28),
                 (0, 0, 0, 0),
             )
             banner_shadow_draw = ImageDraw.Draw(banner_shadow)
             banner_shadow_draw.rounded_rectangle(
-                (6, 6, banner_size[0] + 6, banner_size[1] + 6),
-                fill=(0, 0, 0, 160),
-                radius=banner_radius,
+                (14, 14, banner_size[0] + 14, banner_size[1] + 14),
+                fill=(0, 0, 0, 180),
+                radius=banner_radius + 6,
             )
-            banner_shadow = banner_shadow.filter(ImageFilter.GaussianBlur(radius=10))
+            banner_shadow = banner_shadow.filter(ImageFilter.GaussianBlur(radius=18))
 
             banner_x = frame_x0 + horizontal_padding
             banner_y = frame_y0 + vertical_padding
 
             base.alpha_composite(
+                glow_rect,
+                (
+                    banner_x - glow_pad_x,
+                    banner_y - glow_pad_y,
+                ),
+            )
+            base.alpha_composite(
                 banner_shadow,
                 (
-                    banner_x - 6,
-                    banner_y - 2,
+                    banner_x - 14,
+                    banner_y - 6,
                 ),
             )
             base.paste(banner_preview, (banner_x, banner_y), banner_preview)
