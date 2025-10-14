@@ -790,6 +790,7 @@ class VideoEditorApp:
         tab.rowconfigure(row, weight=1)
         banner_section = ttk.LabelFrame(tab, text=" Faixa de Destaque ", padding=15)
         banner_section.grid(row=row, column=0, sticky="nsew")
+        banner_section.columnconfigure(0, weight=1)
         banner_section.columnconfigure(1, weight=1)
 
         row_idx = 0
@@ -997,37 +998,16 @@ class VideoEditorApp:
         self.banner_default_text_widget.bind("<KeyRelease>", self._on_banner_default_text_change)
         row_idx += 1
 
-        preview_language_frame = ttk.Frame(banner_section)
-        preview_language_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
-        preview_language_frame.columnconfigure(1, weight=1)
-        ttk.Label(preview_language_frame, text="Idioma para pré-visualização:").grid(
-            row=0, column=0, sticky="w", padx=(0, 10)
+        preview_section = ttk.LabelFrame(
+            banner_section, text=" Pré-visualização da Faixa ", padding=12
         )
-        self.banner_preview_language_display_var = ttk.StringVar()
-        self.banner_preview_language_var = ttk.StringVar(value="auto")
-        self.banner_preview_language_combobox = ttk.Combobox(
-            preview_language_frame,
-            textvariable=self.banner_preview_language_display_var,
-            values=list(self.language_code_to_display.values()),
-            state="readonly",
-        )
-        self.banner_preview_language_combobox.grid(row=0, column=1, sticky="ew")
-        self.banner_preview_language_combobox.bind(
-            "<<ComboboxSelected>>", lambda event: self._on_banner_preview_language_selected()
-        )
-        self._set_banner_preview_language_display_from_code(
-            self.banner_preview_language_var.get()
-        )
-        row_idx += 1
-
-        preview_section = ttk.LabelFrame(banner_section, text=" Pré-visualização da Faixa ", padding=5)
-        preview_section.grid(row=row_idx, column=0, columnspan=2, sticky="nsew")
-        preview_section.rowconfigure(0, weight=1)
+        preview_section.grid(row=row_idx, column=0, columnspan=2, sticky="nsew", pady=(15, 0))
+        preview_section.rowconfigure(0, weight=1, minsize=220)
         preview_section.columnconfigure(0, weight=1)
-        self.banner_preview = BannerPreview(preview_section)
+        self.banner_preview = BannerPreview(preview_section, height=260)
         self.banner_preview.grid(row=0, column=0, sticky="nsew")
 
-        banner_section.rowconfigure(row_idx, weight=1)
+        banner_section.rowconfigure(row_idx, weight=1, minsize=240)
 
         self._refresh_banner_state()
         self._refresh_banner_gradient_state()
@@ -1046,21 +1026,6 @@ class VideoEditorApp:
         current_label = self.banner_language_display_var.get()
         code = self.language_display_to_code.get(current_label, "auto")
         self.banner_language_code_var.set(code)
-        self.on_banner_settings_change()
-
-    def _set_banner_preview_language_display_from_code(self, code: str):
-        display = self.language_code_to_display.get(code, self.language_code_to_display.get("auto"))
-        if not display:
-            display = next(iter(self.language_code_to_display.values()))
-            code = self.language_display_to_code.get(display, "auto")
-        self.banner_preview_language_display_var.set(display)
-        resolved = self.language_display_to_code.get(display, "auto")
-        self.banner_preview_language_var.set(resolved)
-
-    def _on_banner_preview_language_selected(self):
-        label = self.banner_preview_language_display_var.get()
-        code = self.language_display_to_code.get(label, "auto")
-        self.banner_preview_language_var.set(code)
         self.on_banner_settings_change()
 
     def _on_banner_default_text_change(self, event=None):
@@ -1092,8 +1057,6 @@ class VideoEditorApp:
                             pass
         if hasattr(self, 'banner_default_text_widget'):
             self.banner_default_text_widget.configure(state=general_state)
-        if hasattr(self, 'banner_preview_language_combobox'):
-            self.banner_preview_language_combobox.configure(state=combo_state)
         if hasattr(self, '_banner_color_mode_buttons'):
             for _, button in self._banner_color_mode_buttons:
                 try:

@@ -6,7 +6,7 @@ import os
 import tkinter as tk
 from typing import Any, Dict, Optional, Tuple
 
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageFilter, ImageTk
 
 from .constants import SUBTITLE_POSITIONS
 from .utils import logger
@@ -15,7 +15,7 @@ from video_processing.banner import BannerRenderConfig, BannerRenderResult, gene
 
 class BannerPreview(tk.Canvas):
     def __init__(self, parent: tk.Misc, **kwargs: Any) -> None:
-        super().__init__(parent, bg="#1a1a1a", **kwargs)
+        super().__init__(parent, bg="#14161f", highlightthickness=0, bd=0, **kwargs)
         self._photo: Optional[ImageTk.PhotoImage] = None
         self._last_params: Dict[str, Any] = {}
         self._last_result: Optional[BannerRenderResult] = None
@@ -68,25 +68,33 @@ class BannerPreview(tk.Canvas):
 
         canvas_w, canvas_h = max(1, self.winfo_width()), max(1, self.winfo_height())
         self.delete("all")
-        self.create_rectangle(0, 0, canvas_w, canvas_h, fill="#1a1a1a", outline="")
-
-        if not enabled:
-            self._last_result = None
-            self.create_text(
-                canvas_w / 2,
-                canvas_h / 2,
-                text="Faixa desativada",
-                fill="#BBBBBB",
-                font=("Segoe UI", 12, "italic"),
-            )
-            return
 
         try:
             video_w, video_h = video_resolution
+        except Exception:
+            video_w, video_h = (1920, 1080)
+
+        try:
+            video_w = max(1, int(video_w))
+            video_h = max(1, int(video_h))
+        except (TypeError, ValueError):
+            video_w, video_h = 1920, 1080
+
+        if not enabled:
+            self._last_result = None
+            mock_image, frame_bbox = self._compose_mock_scene(
+                (canvas_w, canvas_h), (video_w, video_h), None
+            )
+            self._photo = ImageTk.PhotoImage(mock_image)
+            self.create_image(0, 0, image=self._photo, anchor="nw")
+            self._draw_overlay_message(frame_bbox, "Faixa desativada", fill="#c0c4d2")
+            return
+
+        try:
             config = BannerRenderConfig(
                 text=text or "",
-                video_width=max(1, int(video_w)),
-                video_height=max(1, int(video_h)),
+                video_width=video_w,
+                video_height=video_h,
                 use_gradient=use_gradient,
                 solid_color=solid_color or "#333333",
                 gradient_start=gradient_start or solid_color or "#333333",
@@ -107,25 +115,195 @@ class BannerPreview(tk.Canvas):
         except Exception as exc:
             logger.error("Erro ao gerar pré-visualização da faixa: %s", exc)
             self._last_result = None
-            self.create_text(
-                canvas_w / 2,
-                canvas_h / 2,
-                text="Erro na pré-visualização",
-                fill="#E57373",
-                font=("Segoe UI", 12, "bold"),
+            mock_image, frame_bbox = self._compose_mock_scene(
+                (canvas_w, canvas_h), (video_w, video_h), None
             )
+            self._photo = ImageTk.PhotoImage(mock_image)
+            self.create_image(0, 0, image=self._photo, anchor="nw")
+            self._draw_overlay_message(frame_bbox, "Erro na pré-visualização", fill="#E57373")
             return
 
-        ratio = canvas_w / float(config.video_width)
-        preview_height = max(1, int(round(banner_image.height * ratio)))
-        preview_image = banner_image.resize((canvas_w, preview_height), Image.Resampling.LANCZOS)
-
-        composed = Image.new("RGBA", (canvas_w, canvas_h), (26, 26, 26, 255))
-        y_offset = max(0, (canvas_h - preview_height) // 2)
-        composed.paste(preview_image, (0, y_offset), preview_image)
+        composed, frame_bbox = self._compose_mock_scene(
+            (canvas_w, canvas_h), (config.video_width, config.video_height), banner_image
+        )
 
         self._photo = ImageTk.PhotoImage(composed)
         self.create_image(0, 0, image=self._photo, anchor="nw")
+
+    def _compose_mock_scene(
+        self,
+        canvas_size: Tuple[int, int],
+        video_size: Tuple[int, int],
+        banner_image: Optional[Image.Image],
+    ) -> Tuple[Image.Image, Tuple[int, int, int, int]]:
+        canvas_w, canvas_h = canvas_size
+        canvas_w = max(1, canvas_w)
+        canvas_h = max(1, canvas_h)
+
+        top_bg = (45, 51, 67)
+        bottom_bg = (20, 22, 32)
+        gradient_column = Image.new("RGBA", (1, canvas_h))
+        gradient_data = []
+        for y in range(canvas_h):
+            mix = y / max(1, canvas_h - 1)
+            r = int(top_bg[0] * (1 - mix) + bottom_bg[0] * mix)
+            g = int(top_bg[1] * (1 - mix) + bottom_bg[1] * mix)
+            b = int(top_bg[2] * (1 - mix) + bottom_bg[2] * mix)
+            gradient_data.append((r, g, b, 255))
+        gradient_column.putdata(gradient_data)
+        base = gradient_column.resize((canvas_w, canvas_h))
+
+        overlay = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        overlay_draw.ellipse(
+            (
+                -int(canvas_w * 0.3),
+                -int(canvas_h * 0.55),
+                int(canvas_w * 1.3),
+                int(canvas_h * 0.7),
+            ),
+            fill=(255, 255, 255, 60),
+        )
+        overlay_draw.rectangle(
+            (0, canvas_h - int(canvas_h * 0.25), canvas_w, canvas_h),
+            fill=(10, 12, 16, 160),
+        )
+        overlay = overlay.filter(ImageFilter.GaussianBlur(radius=40))
+        base = Image.alpha_composite(base, overlay)
+
+        video_w, video_h = video_size
+        if video_w <= 0:
+            video_w = 16
+        if video_h <= 0:
+            video_h = 9
+        aspect = video_w / float(video_h)
+
+        margin = int(round(min(canvas_w, canvas_h) * 0.08))
+        available_w = max(20, canvas_w - margin * 2)
+        available_h = max(20, canvas_h - margin * 2)
+        frame_width = available_w
+        frame_height = int(round(frame_width / aspect))
+        if frame_height > available_h:
+            frame_height = available_h
+            frame_width = int(round(frame_height * aspect))
+        frame_width = max(32, frame_width)
+        frame_height = max(18, frame_height)
+
+        frame_x0 = (canvas_w - frame_width) // 2
+        frame_y0 = (canvas_h - frame_height) // 2
+        frame_bbox = (frame_x0, frame_y0, frame_x0 + frame_width, frame_y0 + frame_height)
+
+        frame_gradient_column = Image.new("RGBA", (1, frame_height))
+        frame_top = (30, 33, 46)
+        frame_bottom = (12, 12, 18)
+        frame_gradient_data = []
+        for y in range(frame_height):
+            mix = y / max(1, frame_height - 1)
+            r = int(frame_top[0] * (1 - mix) + frame_bottom[0] * mix)
+            g = int(frame_top[1] * (1 - mix) + frame_bottom[1] * mix)
+            b = int(frame_top[2] * (1 - mix) + frame_bottom[2] * mix)
+            frame_gradient_data.append((r, g, b, 255))
+        frame_gradient_column.putdata(frame_gradient_data)
+        frame_body = frame_gradient_column.resize((frame_width, frame_height))
+
+        radius = max(10, int(round(min(frame_width, frame_height) * 0.06)))
+        frame_mask = Image.new("L", (frame_width, frame_height), 0)
+        mask_draw = ImageDraw.Draw(frame_mask)
+        mask_draw.rounded_rectangle(
+            (0, 0, frame_width - 1, frame_height - 1), fill=255, radius=radius
+        )
+
+        frame_with_border = Image.new("RGBA", (frame_width, frame_height), (0, 0, 0, 0))
+        frame_with_border.paste(frame_body, mask=frame_mask)
+        frame_draw = ImageDraw.Draw(frame_with_border)
+        frame_draw.rounded_rectangle(
+            (0, 0, frame_width - 1, frame_height - 1),
+            outline=(255, 255, 255, 40),
+            width=2,
+            radius=radius,
+        )
+        inner_radius = max(4, radius - 4)
+        frame_draw.rounded_rectangle(
+            (3, 3, frame_width - 4, frame_height - 4),
+            outline=(255, 255, 255, 20),
+            width=1,
+            radius=inner_radius,
+        )
+
+        highlight = Image.new("RGBA", (frame_width, frame_height), (0, 0, 0, 0))
+        highlight_draw = ImageDraw.Draw(highlight)
+        highlight_draw.rectangle(
+            (0, 0, frame_width, int(frame_height * 0.18)), fill=(255, 255, 255, 40)
+        )
+        highlight = highlight.filter(ImageFilter.GaussianBlur(radius=18))
+        frame_with_border = Image.alpha_composite(frame_with_border, highlight)
+
+        shadow = Image.new(
+            "RGBA", (frame_width + 16, frame_height + 16), (0, 0, 0, 0)
+        )
+        shadow_draw = ImageDraw.Draw(shadow)
+        shadow_draw.rounded_rectangle(
+            (8, 8, frame_width + 8, frame_height + 8),
+            fill=(0, 0, 0, 140),
+            radius=radius + 4,
+        )
+        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=18))
+        base.alpha_composite(shadow, (frame_x0 - 8, frame_y0 - 2))
+        base.alpha_composite(frame_with_border, (frame_x0, frame_y0))
+
+        if banner_image is not None and banner_image.width > 0 and banner_image.height > 0:
+            max_banner_width = int(frame_width * 0.92)
+            max_banner_height = int(frame_height * 0.26)
+            scale = min(
+                max_banner_width / float(banner_image.width),
+                max_banner_height / float(banner_image.height),
+            )
+            scale = max(scale, 0.01)
+            banner_size = (
+                max(1, int(round(banner_image.width * scale))),
+                max(1, int(round(banner_image.height * scale))),
+            )
+            banner_preview = banner_image.resize(
+                banner_size, Image.Resampling.LANCZOS
+            )
+
+            banner_radius = max(8, int(round(banner_size[1] * 0.25)))
+            banner_shadow = Image.new(
+                "RGBA",
+                (banner_size[0] + 12, banner_size[1] + 12),
+                (0, 0, 0, 0),
+            )
+            banner_shadow_draw = ImageDraw.Draw(banner_shadow)
+            banner_shadow_draw.rounded_rectangle(
+                (6, 6, banner_size[0] + 6, banner_size[1] + 6),
+                fill=(0, 0, 0, 160),
+                radius=banner_radius,
+            )
+            banner_shadow = banner_shadow.filter(ImageFilter.GaussianBlur(radius=10))
+
+            banner_x = frame_x0 + (frame_width - banner_size[0]) // 2
+            banner_y = frame_y0 + frame_height - banner_size[1] - max(
+                10, int(frame_height * 0.07)
+            )
+
+            base.alpha_composite(banner_shadow, (banner_x - 6, banner_y - 2))
+            base.paste(banner_preview, (banner_x, banner_y), banner_preview)
+
+        return base, frame_bbox
+
+    def _draw_overlay_message(
+        self, frame_bbox: Tuple[int, int, int, int], message: str, *, fill: str = "#c0c4d2"
+    ) -> None:
+        fx0, fy0, fx1, fy1 = frame_bbox
+        center_x = (fx0 + fx1) / 2
+        center_y = (fy0 + fy1) / 2
+        self.create_text(
+            center_x,
+            center_y,
+            text=message,
+            fill=fill,
+            font=("Segoe UI", 12, "italic"),
+        )
 
 
 class SubtitlePreview(tk.Canvas):
