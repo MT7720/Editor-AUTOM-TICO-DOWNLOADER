@@ -1,9 +1,9 @@
 # Fluxo de Licenciamento com Keygen.sh
 
-Este guia explica como preparar a conta Keygen, emitir licenças e gerar os tokens
-compatíveis com o Editor Automático. O objectivo é aproveitar o Keygen para
-gestão comercial (clientes, políticas e auditoria) mantendo a activação offline
-através dos tokens assinados localmente.
+Este guia descreve o novo processo de activação totalmente online do Editor
+Automático. O cliente deixa de aceitar bundles seleccionados manualmente e passa
+a contactar a API do Keygen assim que o utilizador informa a chave de licença no
+`CustomLicenseDialog`.
 
 ## 1. Preparar a conta
 
@@ -13,161 +13,71 @@ através dos tokens assinados localmente.
    `ACCOUNT ID` apresentado no painel (por omissão, o projecto utiliza
    `9798e344-f107-4cfd-bcd3-af9b8e75d352`).
 3. Em *Settings → Product Tokens*, gere um **Product Token** de longa duração.
-   Este valor **nunca** deve ser distribuído a clientes finais; guarde-o em um
-   cofre seguro e exponha-o apenas para serviços internos (por exemplo, a
-   pipeline CI/CD ou a máquina que irá emitir licenças).
-4. Crie uma ou mais **Policies** conforme os planos de licenciamento desejados
-   (ex.: número de máquinas, duração, modalidade de subscrição). O identificador
-   de cada política será utilizado ao criar licenças.
+   Guarde-o num cofre e nunca o distribua directamente aos clientes.
+4. Configure as **Policies** com a quantidade de máquinas, duração e demais
+   parâmetros comerciais. O identificador de cada política será utilizado ao
+   emitir licenças.
 
-## 2. Configurar variáveis de ambiente
+## 2. Provisionar as credenciais para o cliente
 
-Os utilitários do repositório esperam os seguintes valores:
+O módulo `security.secrets` procura automaticamente os dados de `account_id`,
+`product_token` e `api_base_url` nas seguintes origens (em ordem de prioridade):
 
-```bash
-export KEYGEN_ACCOUNT_ID="<ACCOUNT ID DA SUA CONTA>"
-export KEYGEN_PRODUCT_TOKEN="<TOKEN DE PRODUTO GERADO NO PAINEL>"
-# Opcional: definir um endpoint self-hosted para a API
-# export KEYGEN_API_BASE_URL="https://api.keygen.sh/v1/accounts/<ACCOUNT ID>"
-```
+1. **`KEYGEN_LICENSE_BUNDLE`** – cadeia Base64 contendo o JSON assinado gerado
+   pelo broker interno. Utilize esta opção para pipelines CI/CD ou scripts de
+   build temporários.
+2. **`KEYGEN_LICENSE_BUNDLE_PATH`** – caminho para o ficheiro JSON assinado com
+   o mesmo conteúdo do item anterior. Certifique-se de que o ficheiro possui
+   permissões restritivas (`chmod 600` em POSIX).
+3. **Variáveis individuais (`KEYGEN_ACCOUNT_ID` e `KEYGEN_PRODUCT_TOKEN`)** –
+   destinadas a ambientes controlados. Prefira os bundles assinados sempre que
+   possível.
+4. **`resources/license_credentials.json`** – ficheiro empacotado juntamente
+   com o executável PyInstaller. Deve conter o JSON assinado e permanecer fora
+   do repositório.
+5. **Campos `license_account_id`, `license_product_token` e
+   `license_api_base_url` em `video_editor_config.json`** – úteis para imagens de
+   máquina virtual ou pacotes MSI que precisam transportar os segredos de forma
+   declarativa. Valores relativos em `license_credentials_path` continuam
+   suportados para apontar para bundles externos.
 
-A partir desta revisão, **os segredos não são mais embutidos** nos binários nem
-ofuscados no código-fonte. O módulo `security.secrets` exige que as credenciais
-cheguem através de um canal autenticado, suportando os seguintes formatos:
+Escolha um único método e garanta que os ficheiros sejam protegidos durante a
+transmissão e o armazenamento. Após o build, remova quaisquer credenciais
+temporárias das máquinas de compilação.
 
-- `KEYGEN_LICENSE_BUNDLE`: cadeia Base64 com um JSON assinado entregue pelo
-  *token broker* interno. Este JSON deve conter `account_id`, `product_token`,
-  `channel`/`proof` e, opcionalmente, `api_base_url`.
-- `KEYGEN_LICENSE_BUNDLE_PATH`: caminho para um ficheiro JSON com o mesmo
-  conteúdo do item acima. O script de build verifica se o ficheiro possui
-  permissões restritivas (ex.: `chmod 600`).
-- `KEYGEN_ACCOUNT_ID` + `KEYGEN_PRODUCT_TOKEN`: *fallback* apenas para ambientes
-  onde as variáveis já são protegidas (por exemplo, segredos do CI). Sempre que
-  possível, prefira o bundle assinado.
-- Bundle local (`resources/license_credentials.json`): quando distribui o
-  executável já empacotado, pode incluir um ficheiro JSON assinado na pasta
-  `resources/` com o mesmo payload descrito acima. O `security.secrets` irá
-  procurá-lo automaticamente utilizando `Path(__file__).resolve()`, mantendo a
-  verificação de permissões e a validação da prova de autenticidade.
-- Caminho configurado (`video_editor_config.json`): defina o campo
-  `license_credentials_path` para apontar para um bundle específico instalado na
-  máquina do utilizador. Valores relativos são resolvidos a partir do directório
-  do próprio ficheiro de configuração.
+## 3. Automatizar builds e distribuição
 
-O `build_all.bat` aborta imediatamente se nenhuma das opções for encontrada.
-Antes de iniciar o PyInstaller, execute o processo interno que solicita um
-bundle temporário ao broker (por exemplo, o job da pipeline CI que autentica na
-VPN corporativa) e defina `KEYGEN_LICENSE_BUNDLE_PATH=secrets.json`. O ficheiro
-não deve ser versionado e precisa ser descartado após o build.
+Antes de executar `build_all.bat`, injete as credenciais através de uma das
+opções anteriores. O script aborta caso nenhum segredo seja encontrado.
+Distribuições oficiais devem incluir apenas os ficheiros empacotados
+necessários (`resources/license_credentials.json`, se for o caso); evite copiar
+credenciais adicionais para o instalador.
 
-Quando optar por distribuir o bundle juntamente com o executável, siga estas
-orientações:
+## 4. Activação no cliente
 
-1. Gere o bundle apenas em estações confiáveis e proteja o ficheiro em trânsito
-   (por exemplo, através de partilhas cifradas).
-2. Garanta que o ficheiro `resources/license_credentials.json` possui
-   permissões restritivas (`chmod 600` em sistemas POSIX). A aplicação recusará
-   ficheiros com permissões abertas a outros utilizadores.
-3. Remova o bundle de máquinas de build depois de concluir o processo. Mesmo em
-   instalações locais, trate o ficheiro como segredo e evite sincronizá-lo via
-   serviços de backup públicos.
+Ao iniciar, o `license_checker.py` tenta reutilizar a activação guardada em
+`license.json` e revalida-la junto ao Keygen. Caso não haja licença válida, o
+utilizador verá apenas o `CustomLicenseDialog`, que recolhe a chave e chama
+`activate_new_license`. O diálogo mostra o estado da operação (aguardando,
+problemas de rede, credenciais ausentes) e fecha-se automaticamente quando a
+activação é concluída.
 
-Se o bundle não estiver presente, o `license_checker.py` irá apresentar um
-diálogo permitindo seleccionar manualmente o ficheiro. Esse fluxo é útil para
-equipas de suporte que recebem o JSON por canal seguro e precisam activá-lo em
-ambientes isolados.
+O ficheiro `license.json` permanece cifrado com AES-GCM a partir do fingerprint
+local. Alterações manuais invalidam o conteúdo e desencadeiam uma nova activação
+online.
 
-A aplicação desktop continua a validar os tokens offline com a chave pública
-configurada em `security/license_authority_keys.json`. Certifique-se de que este
-ficheiro contém o par de chaves Ed25519 correcto ou defina
-`LICENSE_AUTHORITY_KEY_FILE` para apontar para a localização segura do par de
-chaves.
+## 5. Revogações e manutenção
 
-## 3. Consultar políticas e criar licenças
+Actualize periodicamente `security/license_revocations.json` ou configure o
+endpoint indicado por `LICENSE_REVOCATION_URL`. Ao detectar um serial revogado,
+a aplicação encerra e solicita nova activação. Utilize as ferramentas em
+`tools/keygen_license_cli.py` para consultar políticas, criar licenças e gerir
+máquinas activadas.
 
-O script `tools/keygen_license_cli.py` disponibiliza comandos para interagir com
-a API do Keygen usando JSON:API. Para listar as políticas configuradas:
+## 6. Migração de instalações antigas
 
-```bash
-python tools/keygen_license_cli.py policies
-```
-
-Exemplo de saída:
-
-```
-Políticas disponíveis:
-- ID: 23f1...c901
-  Nome: Plano Anual
-  Licenças máximas: 3
-```
-
-Para emitir uma nova licença associada à política acima:
-
-```bash
-python tools/keygen_license_cli.py create-license \
-  --policy 23f1...c901 \
-  --name "ACME Corp." \
-  --email suporte@acme.test \
-  --expiry 2026-01-31T23:59:59Z \
-  --max-machines 3
-```
-
-O comando imprime o `id` e o `key` atribuídos pelo Keygen, juntamente com os
-atributos devolvidos pela API. Guarde o identificador para futuras emissões ou
-revogações.
-
-## 4. Gerar tokens offline para os clientes
-
-O Editor Automático espera receber um token compacto (payload + assinatura
-Ed25519) no acto de activação. Para gerar o token a partir de uma licença
-existente no Keygen:
-
-```bash
-python tools/keygen_license_cli.py issue-token \
-  --license 1f4d...2aa1 \
-  --fingerprint maquina-123 \
-  --serial acme-maquina-123
-```
-
-O comando reutiliza `security/license_authority.py` para assinar os dados usando
-as chaves internas e produzir um token compatível com o cliente. Se a licença no
-Keygen possuir um campo `expiry`, o mesmo será adoptado automaticamente; caso
-contrário, forneça `--expiry` com um timestamp ISO 8601.
-
-A resposta JSON contém:
-
-- `license`: o identificador da licença no Keygen;
-- `fingerprint`: a impressão digital utilizada;
-- `token`: o valor que deve ser entregue ao cliente (copie e cole no diálogo de
-  activação);
-- `expiry`, `seats` e `serial`: metadados úteis para registo interno.
-
-Distribua apenas o campo `token` aos clientes finais. Os demais campos servem
-para auditoria e podem ser armazenados em sistemas internos.
-
-## 5. Utilizar as licenças no Editor Automático
-
-1. Abra o Editor Automático na máquina do cliente.
-2. Quando solicitado, cole o `token` gerado no passo anterior.
-3. O `license_checker.py` irá validar a assinatura, verificar a expiração e
-   assegurar que o `fingerprint` corresponde à máquina actual. Em seguida, o
-   ficheiro cifrado `license.json` será actualizado com os dados da activação.
-
-Caso seja necessário revogar o acesso, actualize a lista de seriais em
-`security/license_revocations.json` (ou no endpoint configurado em
-`LICENSE_REVOCATION_URL`). Ao detectar um serial revogado, a aplicação encerra
-automaticamente e solicita uma nova activação.
-
-## 6. Boas práticas adicionais
-
-- Mantenha o `KEYGEN_PRODUCT_TOKEN` fora de máquinas de clientes. Utilize um
-  serviço intermediário (como `security/token_broker_service.py`) quando for
-  necessário distribuir credenciais temporárias para activação online.
-- Documente os `serials` emitidos e mantenha um registo de que máquina/cliente
-  recebeu cada token. Isso facilita revogações e reemissões.
-- Periodicamente valide se as políticas e licenças no Keygen continuam alinhadas
-  com os planos comerciais oferecidos.
-
-Com estes passos, o Keygen passa a servir como a origem única de verdade para as
-licenças, enquanto o Editor Automático mantém a activação offline e resistente a
-alterações locais.
+Ambientes que ainda utilizam tokens Ed25519 emitidos offline devem seguir o
+roteiro de [`docs/offline_license_issuance.md`](docs/offline_license_issuance.md)
+para revogar os tokens legados e proceder com a activação online. Após a
+migração, remova quaisquer bundles antigos e confirme que apenas os métodos
+listados acima permanecem activos.
