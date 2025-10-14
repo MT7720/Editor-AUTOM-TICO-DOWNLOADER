@@ -44,12 +44,38 @@ cheguem através de um canal autenticado, suportando os seguintes formatos:
 - `KEYGEN_ACCOUNT_ID` + `KEYGEN_PRODUCT_TOKEN`: *fallback* apenas para ambientes
   onde as variáveis já são protegidas (por exemplo, segredos do CI). Sempre que
   possível, prefira o bundle assinado.
+- Bundle local (`resources/license_credentials.json`): quando distribui o
+  executável já empacotado, pode incluir um ficheiro JSON assinado na pasta
+  `resources/` com o mesmo payload descrito acima. O `security.secrets` irá
+  procurá-lo automaticamente utilizando `Path(__file__).resolve()`, mantendo a
+  verificação de permissões e a validação da prova de autenticidade.
+- Caminho configurado (`video_editor_config.json`): defina o campo
+  `license_credentials_path` para apontar para um bundle específico instalado na
+  máquina do utilizador. Valores relativos são resolvidos a partir do directório
+  do próprio ficheiro de configuração.
 
 O `build_all.bat` aborta imediatamente se nenhuma das opções for encontrada.
 Antes de iniciar o PyInstaller, execute o processo interno que solicita um
 bundle temporário ao broker (por exemplo, o job da pipeline CI que autentica na
 VPN corporativa) e defina `KEYGEN_LICENSE_BUNDLE_PATH=secrets.json`. O ficheiro
 não deve ser versionado e precisa ser descartado após o build.
+
+Quando optar por distribuir o bundle juntamente com o executável, siga estas
+orientações:
+
+1. Gere o bundle apenas em estações confiáveis e proteja o ficheiro em trânsito
+   (por exemplo, através de partilhas cifradas).
+2. Garanta que o ficheiro `resources/license_credentials.json` possui
+   permissões restritivas (`chmod 600` em sistemas POSIX). A aplicação recusará
+   ficheiros com permissões abertas a outros utilizadores.
+3. Remova o bundle de máquinas de build depois de concluir o processo. Mesmo em
+   instalações locais, trate o ficheiro como segredo e evite sincronizá-lo via
+   serviços de backup públicos.
+
+Se o bundle não estiver presente, o `license_checker.py` irá apresentar um
+diálogo permitindo seleccionar manualmente o ficheiro. Esse fluxo é útil para
+equipas de suporte que recebem o JSON por canal seguro e precisam activá-lo em
+ambientes isolados.
 
 A aplicação desktop continua a validar os tokens offline com a chave pública
 configurada em `security/license_authority_keys.json`. Certifique-se de que este

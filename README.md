@@ -13,8 +13,11 @@ python main.py
 > ℹ️ Antes de iniciar, certifique-se de que as credenciais do Keygen foram
 > provisionadas por um canal autenticado. Defina `KEYGEN_LICENSE_BUNDLE`,
 > `KEYGEN_LICENSE_BUNDLE_PATH` ou, como último recurso para desenvolvimento,
-> `KEYGEN_ACCOUNT_ID` e `KEYGEN_PRODUCT_TOKEN`. Sem esses valores, o verificador
-> de licença exibirá uma mensagem de erro e encerrará a aplicação.
+> `KEYGEN_ACCOUNT_ID` e `KEYGEN_PRODUCT_TOKEN`. A partir desta versão, também é
+> possível distribuir um ficheiro `resources/license_credentials.json` (ou
+> apontar `license_credentials_path` em `video_editor_config.json`) com o bundle
+> assinado. Sem esses valores, o verificador de licença exibirá uma mensagem de
+> erro e encerrará a aplicação.
 
 Durante o desenvolvimento, as verificações de integridade do `security.runtime_guard`
 ficam desativadas para permitir ajustes livres no código-fonte. A validação de hashes
@@ -62,10 +65,12 @@ O ficheiro `license.json` continua cifrado com AES-GCM usando uma chave derivada
 
 > ⚠️ As credenciais do Keygen (account ID e product token) deixaram de ser
 > embutidas no código. O módulo `security.secrets` exige um pacote de segredos
-> entregue por canal autenticado (`KEYGEN_LICENSE_BUNDLE` ou
-> `KEYGEN_LICENSE_BUNDLE_PATH`). Consulte [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md)
-> para instruções sobre como gerar o bundle durante o build e injectá-lo via
-> variáveis de ambiente seguras.
+> entregue por canal autenticado (`KEYGEN_LICENSE_BUNDLE`,
+> `KEYGEN_LICENSE_BUNDLE_PATH` ou um bundle instalado em
+> `resources/license_credentials.json`). Consulte
+> [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md) para
+> instruções sobre como gerar o bundle, posicioná-lo com segurança no disco e
+> injectá-lo via variáveis de ambiente quando necessário.
 
 ### Revogação e reemissão
 
