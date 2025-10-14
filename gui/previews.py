@@ -10,7 +10,7 @@ from PIL import Image, ImageTk
 
 from .constants import SUBTITLE_POSITIONS
 from .utils import logger
-from video_processing.banner import BannerRenderConfig, generate_banner_image
+from video_processing.banner import BannerRenderConfig, BannerRenderResult, generate_banner_image
 
 
 class BannerPreview(tk.Canvas):
@@ -18,6 +18,7 @@ class BannerPreview(tk.Canvas):
         super().__init__(parent, bg="#1a1a1a", **kwargs)
         self._photo: Optional[ImageTk.PhotoImage] = None
         self._last_params: Dict[str, Any] = {}
+        self._last_result: Optional[BannerRenderResult] = None
         self.bind("<Configure>", self._on_resize)
 
     def _on_resize(self, event: tk.Event[Any]) -> None:  # pragma: no cover - UI callback
@@ -56,6 +57,7 @@ class BannerPreview(tk.Canvas):
         self.create_rectangle(0, 0, canvas_w, canvas_h, fill="#1a1a1a", outline="")
 
         if not enabled:
+            self._last_result = None
             self.create_text(
                 canvas_w / 2,
                 canvas_h / 2,
@@ -78,9 +80,12 @@ class BannerPreview(tk.Canvas):
                 font_color=font_color or "#FFFFFF",
                 font_path=font_path,
             )
-            banner_image = generate_banner_image(config)
+            result = generate_banner_image(config)
+            self._last_result = result
+            banner_image = result.image
         except Exception as exc:
             logger.error("Erro ao gerar pré-visualização da faixa: %s", exc)
+            self._last_result = None
             self.create_text(
                 canvas_w / 2,
                 canvas_h / 2,

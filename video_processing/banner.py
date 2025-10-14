@@ -11,12 +11,14 @@ __all__ = [
     "BANNER_HEIGHT_RATIO",
     "BANNER_MIN_HEIGHT",
     "BannerRenderConfig",
+    "BannerRenderResult",
     "compute_banner_height",
     "generate_banner_image",
 ]
 
 BANNER_HEIGHT_RATIO = 0.18
 BANNER_MIN_HEIGHT = 80
+MIN_FONT_SIZE = 14
 
 
 @dataclass
@@ -32,6 +34,17 @@ class BannerRenderConfig:
     gradient_end: str
     font_color: str
     font_path: Optional[str] = None
+
+
+@dataclass
+class BannerRenderResult:
+    """Result returned after rendering a banner overlay."""
+
+    image: Image.Image
+    font_size: int
+    line_count: int
+    text_width: int
+    text_height: int
 
 
 def compute_banner_height(video_height: int) -> int:
@@ -58,17 +71,27 @@ def _parse_hex_color(value: str, *, default: Tuple[int, int, int]) -> Tuple[int,
         return default
 
 
-def _load_font(font_path: Optional[str], banner_height: int) -> ImageFont.ImageFont:
-    font_size = max(18, int(round(banner_height * 0.45)))
-    if font_path:
+def _load_font(
+    font_path: Optional[str],
+    banner_height: int,
+    *,
+    font_size: Optional[int] = None,
+) -> Tuple[ImageFont.ImageFont, int]:
+    """Load the truetype font with ``font_size`` or a size based on ``banner_height``."""
+
+    resolved_size = font_size or max(18, int(round(banner_height * 0.45)))
+    font_candidates = [font_path] if font_path else []
+    font_candidates.append("DejaVuSans.ttf")
+
+    for candidate in font_candidates:
+        if not candidate:
+            continue
         try:
-            return ImageFont.truetype(font_path, font_size)
+            return ImageFont.truetype(candidate, resolved_size), resolved_size
         except Exception:
-            pass
-    try:
-        return ImageFont.truetype("DejaVuSans.ttf", font_size)
-    except Exception:
-        return ImageFont.load_default()
+            continue
+
+    return ImageFont.load_default(), resolved_size
 
 
 def _wrap_text(text: str, draw: ImageDraw.ImageDraw, font: ImageFont.ImageFont, max_width: float) -> List[str]:
@@ -110,8 +133,8 @@ def _draw_gradient(width: int, height: int, start: Tuple[int, int, int], end: Tu
     return gradient.resize((max(1, width), height))
 
 
-def generate_banner_image(config: BannerRenderConfig) -> Image.Image:
-    """Render an RGBA banner image according to ``config``."""
+def generate_banner_image(config: BannerRenderConfig) -> BannerRenderResult:
+    """Render an RGBA banner image according to ``config`` and return metadata."""
 
     banner_height = compute_banner_height(config.video_height)
     width = max(1, int(config.video_width))
@@ -128,26 +151,73 @@ def generate_banner_image(config: BannerRenderConfig) -> Image.Image:
 
     banner.paste(background, (0, 0))
 
-    font = _load_font(config.font_path, banner_height)
     draw = ImageDraw.Draw(banner)
 
     font_rgb = _parse_hex_color(config.font_color, default=(255, 255, 255))
     max_text_width = width * 0.9
-    lines = _wrap_text(config.text, draw, font, max_text_width)
+    target_font_size = max(18, int(round(banner_height * 0.45)))
+    min_font_size = max(MIN_FONT_SIZE, int(round(banner_height * 0.2)))
 
-    if lines:
-        line_heights: List[int] = []
-        for line in lines:
+    resolved_lines: List[str] = []
+    line_heights: List[int] = []
+    line_widths: List[int] = []
+    line_spacing = 0
+    font: ImageFont.ImageFont
+    font_size = target_font_size
+
+    for candidate_size in range(target_font_size, min_font_size - 1, -1):
+        font, font_size = _load_font(config.font_path, banner_height, font_size=candidate_size)
+        candidate_lines = _wrap_text(config.text, draw, font, max_text_width)
+        if not candidate_lines:
+            resolved_lines = []
+            line_heights = []
+            line_widths = []
+            line_spacing = 0
+            break
+
+        candidate_heights: List[int] = []
+        candidate_widths: List[int] = []
+        for line in candidate_lines:
             bbox = draw.textbbox((0, 0), line, font=font)
-            line_heights.append(bbox[3] - bbox[1])
-        line_spacing = max(4, int(round(sum(line_heights) * 0.05)))
-        total_text_height = sum(line_heights) + line_spacing * (len(lines) - 1)
-        y = max(0, (banner_height - total_text_height) // 2)
-        for idx, line in enumerate(lines):
+            candidate_heights.append(bbox[3] - bbox[1])
+            candidate_widths.append(bbox[2] - bbox[0])
+
+        spacing = max(4, int(round(font_size * 0.2)))
+        total_text_height = sum(candidate_heights) + spacing * (len(candidate_lines) - 1)
+        max_line_width = max(candidate_widths) if candidate_widths else 0
+
+        if max_line_width <= max_text_width and total_text_height <= banner_height * 0.9:
+            resolved_lines = candidate_lines
+            line_heights = candidate_heights
+            line_widths = candidate_widths
+            line_spacing = spacing
+            break
+
+        if candidate_size == min_font_size:
+            resolved_lines = candidate_lines
+            line_heights = candidate_heights
+            line_widths = candidate_widths
+            line_spacing = spacing
+            break
+
+    text_height = 0
+    text_width = 0
+    if resolved_lines:
+        total_text_height = sum(line_heights) + line_spacing * (len(resolved_lines) - 1)
+        text_height = int(total_text_height)
+        text_width = int(max(line_widths) if line_widths else 0)
+        y = max(0, int(round((banner_height - total_text_height) / 2)))
+        for idx, line in enumerate(resolved_lines):
             bbox = draw.textbbox((0, 0), line, font=font)
             line_width = bbox[2] - bbox[0]
             x = max(0, int(round((width - line_width) / 2)))
             draw.text((x, y), line, font=font, fill=(*font_rgb, 255))
             y += line_heights[idx] + line_spacing
 
-    return banner
+    return BannerRenderResult(
+        image=banner,
+        font_size=font_size,
+        line_count=len(resolved_lines),
+        text_width=int(text_width),
+        text_height=int(text_height),
+    )

@@ -81,7 +81,8 @@ def _prepare_banner_overlay(
     )
 
     try:
-        banner_image = generate_banner_image(render_config)
+        banner_result = generate_banner_image(render_config)
+        banner_image = banner_result.image
     except Exception as exc:
         logger.error("Falha ao gerar imagem da faixa: %s", exc, exc_info=True)
         return None
@@ -96,12 +97,17 @@ def _prepare_banner_overlay(
 
     params['banner_overlay_path'] = overlay_path
     params['banner_overlay_height'] = banner_image.height
+    params['banner_overlay_font_size'] = banner_result.font_size
+    params['banner_overlay_text_height'] = banner_result.text_height
+    params['banner_overlay_text_width'] = banner_result.text_width
+    params['banner_overlay_line_count'] = banner_result.line_count
     params['banner_overlay_duration'] = duration
 
     return {
         'path': overlay_path,
         'duration': duration,
         'height': banner_image.height,
+        'font_size': banner_result.font_size,
     }
 
 
