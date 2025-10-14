@@ -137,8 +137,18 @@ class BannerPreview(tk.Canvas):
             self._draw_overlay_message(frame_bbox, "Erro na pré-visualização", fill="#E57373")
             return
 
+        banner_ratio = 0.0
+        if config.video_height:
+            try:
+                banner_ratio = banner_image.height / float(max(1, config.video_height))
+            except Exception:
+                banner_ratio = 0.0
+
         composed, frame_bbox = self._compose_mock_scene(
-            (canvas_w, canvas_h), (config.video_width, config.video_height), banner_image
+            (canvas_w, canvas_h),
+            (config.video_width, config.video_height),
+            banner_image,
+            banner_ratio if banner_ratio > 0 else None,
         )
 
         self._photo = ImageTk.PhotoImage(composed)
@@ -149,6 +159,7 @@ class BannerPreview(tk.Canvas):
         canvas_size: Tuple[int, int],
         video_size: Tuple[int, int],
         banner_image: Optional[Image.Image],
+        banner_ratio: Optional[float] = None,
     ) -> Tuple[Image.Image, Tuple[int, int, int, int]]:
         canvas_w, canvas_h = canvas_size
         canvas_w = max(1, canvas_w)
@@ -223,9 +234,20 @@ class BannerPreview(tk.Canvas):
             width_scale = frame_width / float(max(1, banner_reference_width))
             width_scale = max(width_scale, 0.01)
 
-            target_banner_height = frame_height * 0.6
+            if banner_ratio is None:
+                banner_ratio = banner_image.height / float(max(1, video_h))
+            try:
+                ratio_value = float(banner_ratio)
+            except (TypeError, ValueError):
+                ratio_value = BANNER_HEIGHT_RATIO
+            ratio_value = max(0.05, min(ratio_value, 0.9))
+
+            target_banner_height = max(
+                1,
+                int(round(frame_height * ratio_value)),
+            )
             height_scale = target_banner_height / float(max(1, banner_image.height))
-            scale = max(width_scale, height_scale)
+            scale = min(width_scale, height_scale, 1.0)
 
             banner_size = (
                 max(1, int(round(banner_image.width * scale))),
