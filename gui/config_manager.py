@@ -90,6 +90,13 @@ class ConfigManager:
             "banner_gradient_end": "#DD2476",
             "banner_font_color": "#FFFFFF",
             "banner_duration": 5.0,
+            "banner_outline_enabled": False,
+            "banner_outline_color": "#000000",
+            "banner_outline_offset": 2.0,
+            "banner_shadow_enabled": False,
+            "banner_shadow_color": "#000000",
+            "banner_shadow_offset_x": 3.0,
+            "banner_shadow_offset_y": 3.0,
         }
         try:
             if os.path.exists(CONFIG_FILE):

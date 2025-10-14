@@ -791,7 +791,8 @@ class VideoEditorApp:
         banner_section = ttk.LabelFrame(tab, text=" Faixa de Destaque ", padding=15)
         banner_section.grid(row=row, column=0, sticky="nsew")
         banner_section.columnconfigure(1, weight=1)
-        banner_section.rowconfigure(11, weight=1)
+
+        row_idx = 0
 
         self.banner_enabled_check = ttk.Checkbutton(
             banner_section,
@@ -800,7 +801,8 @@ class VideoEditorApp:
             bootstyle="round-toggle",
             command=lambda: (self._refresh_banner_state(), self.on_banner_settings_change()),
         )
-        self.banner_enabled_check.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.banner_enabled_check.grid(row=row_idx, column=0, columnspan=2, sticky="w")
+        row_idx += 1
 
         ttk.Label(
             banner_section,
@@ -810,10 +812,11 @@ class VideoEditorApp:
             ),
             wraplength=760,
             justify=LEFT,
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 2))
+        ).grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(6, 2))
+        row_idx += 1
 
         language_frame = ttk.Frame(banner_section)
-        language_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        language_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         language_frame.columnconfigure(1, weight=1)
         ttk.Label(language_frame, text="Idioma preferido para traduções automáticas:").grid(
             row=0, column=0, sticky="w", padx=(0, 10)
@@ -830,10 +833,11 @@ class VideoEditorApp:
             "<<ComboboxSelected>>", lambda event: self._on_banner_language_selected()
         )
         self._set_banner_language_display_from_code(self.banner_language_code_var.get())
+        row_idx += 1
 
         self.banner_duration_frame = self._create_slider_control(
             banner_section,
-            3,
+            row_idx,
             "Duração (s):",
             self.banner_duration_var,
             1.0,
@@ -841,9 +845,10 @@ class VideoEditorApp:
             "%.1f",
             self.on_banner_settings_change,
         )
+        row_idx += 1
 
         colors_frame = ttk.LabelFrame(banner_section, text=" Cores da Faixa ", padding=10)
-        colors_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        colors_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         colors_frame.columnconfigure(1, weight=1)
 
         color_mode_frame = ttk.Frame(colors_frame)
@@ -876,24 +881,124 @@ class VideoEditorApp:
             colors_frame, 3, 1, self.banner_gradient_end_var, self.on_banner_settings_change
         )
         self._banner_color_frames = [solid_picker, gradient_start_picker, gradient_end_picker]
+        row_idx += 1
 
         font_frame = ttk.Frame(banner_section)
-        font_frame.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        font_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(5, 0))
         ttk.Label(font_frame, text="Cor do texto:").grid(row=0, column=0, sticky="w", padx=(0, 10))
         self.banner_font_color_picker = self._create_color_picker(
             font_frame, 0, 1, self.banner_font_color_var, self.on_banner_settings_change
         )
+        row_idx += 1
+
+        text_effects_frame = ttk.LabelFrame(banner_section, text=" Estilo do Texto ", padding=10)
+        text_effects_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        text_effects_frame.columnconfigure(1, weight=1)
+
+        effect_row = 0
+        self.banner_outline_check = ttk.Checkbutton(
+            text_effects_frame,
+            text="Adicionar contorno",
+            variable=self.banner_outline_enabled_var,
+            bootstyle="round-toggle",
+            command=self._on_banner_outline_toggle,
+        )
+        self.banner_outline_check.grid(row=effect_row, column=0, columnspan=2, sticky="w")
+        effect_row += 1
+
+        ttk.Label(text_effects_frame, text="Cor do contorno:").grid(
+            row=effect_row, column=0, sticky="w", padx=(0, 10), pady=(5, 0)
+        )
+        self.banner_outline_color_picker = self._create_color_picker(
+            text_effects_frame,
+            effect_row,
+            1,
+            self.banner_outline_color_var,
+            self.on_banner_settings_change,
+        )
+        effect_row += 1
+
+        outline_offset_frame = self._create_slider_control(
+            text_effects_frame,
+            effect_row,
+            "Espessura/offset (px):",
+            self.banner_outline_offset_var,
+            0.0,
+            20.0,
+            "%.0f",
+            self.on_banner_settings_change,
+        )
+        effect_row += 1
+
+        self.banner_shadow_check = ttk.Checkbutton(
+            text_effects_frame,
+            text="Adicionar sombra",
+            variable=self.banner_shadow_enabled_var,
+            bootstyle="round-toggle",
+            command=self._on_banner_shadow_toggle,
+        )
+        self.banner_shadow_check.grid(row=effect_row, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        effect_row += 1
+
+        ttk.Label(text_effects_frame, text="Cor da sombra:").grid(
+            row=effect_row, column=0, sticky="w", padx=(0, 10), pady=(5, 0)
+        )
+        self.banner_shadow_color_picker = self._create_color_picker(
+            text_effects_frame,
+            effect_row,
+            1,
+            self.banner_shadow_color_var,
+            self.on_banner_settings_change,
+        )
+        effect_row += 1
+
+        shadow_offset_x_frame = self._create_slider_control(
+            text_effects_frame,
+            effect_row,
+            "Offset X (px):",
+            self.banner_shadow_offset_x_var,
+            -30.0,
+            30.0,
+            "%.0f",
+            self.on_banner_settings_change,
+        )
+        effect_row += 1
+
+        shadow_offset_y_frame = self._create_slider_control(
+            text_effects_frame,
+            effect_row,
+            "Offset Y (px):",
+            self.banner_shadow_offset_y_var,
+            -30.0,
+            30.0,
+            "%.0f",
+            self.on_banner_settings_change,
+        )
+
+        self._banner_outline_widgets = [
+            self.banner_outline_color_picker,
+            outline_offset_frame,
+        ]
+        self._banner_shadow_widgets = [
+            self.banner_shadow_color_picker,
+            shadow_offset_x_frame,
+            shadow_offset_y_frame,
+        ]
+        row_idx += 1
 
         ttk.Label(banner_section, text="Texto da faixa:").grid(
-            row=6, column=0, columnspan=2, sticky="w", pady=(10, 5)
+            row=row_idx, column=0, columnspan=2, sticky="w", pady=(10, 5)
         )
+        row_idx += 1
+
         self.banner_default_text_widget = scrolledtext.ScrolledText(banner_section, height=4, wrap="word")
-        self.banner_default_text_widget.grid(row=7, column=0, columnspan=2, sticky="ew")
+        self.banner_default_text_widget.grid(row=row_idx, column=0, columnspan=2, sticky="ew")
         self.banner_default_text_widget.insert("1.0", self.banner_default_text_var.get())
         self.banner_default_text_widget.bind("<KeyRelease>", self._on_banner_default_text_change)
+        row_idx += 1
 
         preview_language_frame = ttk.Frame(banner_section)
-        preview_language_frame.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        preview_language_frame.grid(row=row_idx, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         preview_language_frame.columnconfigure(1, weight=1)
         ttk.Label(preview_language_frame, text="Idioma para pré-visualização:").grid(
             row=0, column=0, sticky="w", padx=(0, 10)
@@ -913,16 +1018,20 @@ class VideoEditorApp:
         self._set_banner_preview_language_display_from_code(
             self.banner_preview_language_var.get()
         )
+        row_idx += 1
 
         preview_section = ttk.LabelFrame(banner_section, text=" Pré-visualização da Faixa ", padding=5)
-        preview_section.grid(row=9, column=0, columnspan=2, sticky="nsew")
+        preview_section.grid(row=row_idx, column=0, columnspan=2, sticky="nsew")
         preview_section.rowconfigure(0, weight=1)
         preview_section.columnconfigure(0, weight=1)
         self.banner_preview = BannerPreview(preview_section)
         self.banner_preview.grid(row=0, column=0, sticky="nsew")
 
+        banner_section.rowconfigure(row_idx, weight=1)
+
         self._refresh_banner_state()
         self._refresh_banner_gradient_state()
+        self._refresh_banner_effect_states()
 
     def _set_banner_language_display_from_code(self, code: str):
         display = self.language_code_to_display.get(code, self.language_code_to_display.get("auto"))
@@ -1006,6 +1115,7 @@ class VideoEditorApp:
                 except Exception:
                     pass
         self._refresh_banner_gradient_state()
+        self._refresh_banner_effect_states()
 
     def _refresh_banner_color_mode_buttons(self):
         if not hasattr(self, '_banner_color_mode_buttons'):
@@ -1036,6 +1146,50 @@ class VideoEditorApp:
                 except Exception:
                     pass
 
+    def _configure_widget_state_recursive(self, widget, state):
+        try:
+            widget.configure(state=state)
+        except Exception:
+            pass
+        if hasattr(widget, 'winfo_children'):
+            for child in widget.winfo_children():
+                self._configure_widget_state_recursive(child, state)
+
+    def _set_widgets_enabled(self, widgets, enabled: bool):
+        state = NORMAL if enabled else DISABLED
+        for widget in widgets:
+            self._configure_widget_state_recursive(widget, state)
+
+    def _refresh_banner_effect_states(self):
+        enabled = self.banner_enabled_var.get()
+        general_state = NORMAL if enabled else DISABLED
+        if hasattr(self, 'banner_outline_check'):
+            try:
+                self.banner_outline_check.configure(state=general_state)
+            except Exception:
+                pass
+        if hasattr(self, 'banner_shadow_check'):
+            try:
+                self.banner_shadow_check.configure(state=general_state)
+            except Exception:
+                pass
+        outline_var = getattr(self, 'banner_outline_enabled_var', None)
+        shadow_var = getattr(self, 'banner_shadow_enabled_var', None)
+        outline_active = enabled and bool(outline_var.get() if outline_var is not None else False)
+        shadow_active = enabled and bool(shadow_var.get() if shadow_var is not None else False)
+        if hasattr(self, '_banner_outline_widgets'):
+            self._set_widgets_enabled(self._banner_outline_widgets, outline_active)
+        if hasattr(self, '_banner_shadow_widgets'):
+            self._set_widgets_enabled(self._banner_shadow_widgets, shadow_active)
+
+    def _on_banner_outline_toggle(self):
+        self._refresh_banner_effect_states()
+        self.on_banner_settings_change()
+
+    def _on_banner_shadow_toggle(self):
+        self._refresh_banner_effect_states()
+        self.on_banner_settings_change()
+
     def on_banner_settings_change(self, event=None):
         if hasattr(self, '_banner_update_job'):
             self.root.after_cancel(self._banner_update_job)
@@ -1061,6 +1215,13 @@ class VideoEditorApp:
                 enabled=enabled,
                 video_resolution=(video_w, video_h),
                 font_path=font_path or None,
+                outline_enabled=self.banner_outline_enabled_var.get(),
+                outline_color=self.banner_outline_color_var.get(),
+                outline_offset=self.banner_outline_offset_var.get(),
+                shadow_enabled=self.banner_shadow_enabled_var.get(),
+                shadow_color=self.banner_shadow_color_var.get(),
+                shadow_offset_x=self.banner_shadow_offset_x_var.get(),
+                shadow_offset_y=self.banner_shadow_offset_y_var.get(),
             )
         except Exception as exc:
             logger.error("Erro ao atualizar pré-visualização da faixa: %s", exc, exc_info=True)
@@ -2004,6 +2165,13 @@ class VideoEditorApp:
         params['banner_gradient_start'] = self.banner_gradient_start_var.get()
         params['banner_gradient_end'] = self.banner_gradient_end_var.get()
         params['banner_font_color'] = self.banner_font_color_var.get()
+        params['banner_outline_enabled'] = self.banner_outline_enabled_var.get()
+        params['banner_outline_color'] = self.banner_outline_color_var.get()
+        params['banner_outline_offset'] = float(self.banner_outline_offset_var.get())
+        params['banner_shadow_enabled'] = self.banner_shadow_enabled_var.get()
+        params['banner_shadow_color'] = self.banner_shadow_color_var.get()
+        params['banner_shadow_offset_x'] = float(self.banner_shadow_offset_x_var.get())
+        params['banner_shadow_offset_y'] = float(self.banner_shadow_offset_y_var.get())
         params['banner_duration'] = float(self.banner_duration_var.get())
         params['banner_texts'] = {}
         logger.debug(f"Parâmetros finais coletados: {json.dumps(params, indent=2, default=str)}")
@@ -2345,6 +2513,13 @@ class VideoEditorApp:
             'banner_gradient_start': self.banner_gradient_start_var.get(),
             'banner_gradient_end': self.banner_gradient_end_var.get(),
             'banner_font_color': self.banner_font_color_var.get(),
+            'banner_outline_enabled': self.banner_outline_enabled_var.get(),
+            'banner_outline_color': self.banner_outline_color_var.get(),
+            'banner_outline_offset': self.banner_outline_offset_var.get(),
+            'banner_shadow_enabled': self.banner_shadow_enabled_var.get(),
+            'banner_shadow_color': self.banner_shadow_color_var.get(),
+            'banner_shadow_offset_x': self.banner_shadow_offset_x_var.get(),
+            'banner_shadow_offset_y': self.banner_shadow_offset_y_var.get(),
             'banner_duration': self.banner_duration_var.get(),
             'banner_texts': {},
         }

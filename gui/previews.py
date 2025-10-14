@@ -38,6 +38,13 @@ class BannerPreview(tk.Canvas):
         enabled: bool,
         video_resolution: Tuple[int, int],
         font_path: Optional[str] = None,
+        outline_enabled: bool = False,
+        outline_color: str = "#000000",
+        outline_offset: float = 2.0,
+        shadow_enabled: bool = False,
+        shadow_color: str = "#000000",
+        shadow_offset_x: float = 3.0,
+        shadow_offset_y: float = 3.0,
     ) -> None:
         self._last_params = {
             'text': text,
@@ -49,6 +56,13 @@ class BannerPreview(tk.Canvas):
             'enabled': enabled,
             'video_resolution': video_resolution,
             'font_path': font_path,
+            'outline_enabled': outline_enabled,
+            'outline_color': outline_color,
+            'outline_offset': outline_offset,
+            'shadow_enabled': shadow_enabled,
+            'shadow_color': shadow_color,
+            'shadow_offset_x': shadow_offset_x,
+            'shadow_offset_y': shadow_offset_y,
         }
 
         canvas_w, canvas_h = max(1, self.winfo_width()), max(1, self.winfo_height())
@@ -77,6 +91,13 @@ class BannerPreview(tk.Canvas):
                 gradient_end=gradient_end or solid_color or "#333333",
                 font_color=font_color or "#FFFFFF",
                 font_path=font_path,
+                outline_enabled=outline_enabled,
+                outline_color=outline_color or "#000000",
+                outline_offset=outline_offset,
+                shadow_enabled=shadow_enabled,
+                shadow_color=shadow_color or "#000000",
+                shadow_offset_x=shadow_offset_x,
+                shadow_offset_y=shadow_offset_y,
             )
             banner_image = generate_banner_image(config)
         except Exception as exc:

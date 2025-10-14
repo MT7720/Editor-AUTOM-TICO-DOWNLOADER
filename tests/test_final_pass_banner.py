@@ -5,7 +5,7 @@ from queue import Queue
 from PIL import Image
 
 from video_processing import final_pass
-from video_processing.banner import compute_banner_height
+from video_processing.banner import BannerRenderConfig, compute_banner_height, generate_banner_image
 
 
 def test_banner_overlay_creates_gradient_and_filter(tmp_path, monkeypatch):
@@ -32,6 +32,13 @@ def test_banner_overlay_creates_gradient_and_filter(tmp_path, monkeypatch):
         'banner_gradient_start': '#112233',
         'banner_gradient_end': '#445566',
         'banner_font_color': '#FFFFFF',
+        'banner_outline_enabled': True,
+        'banner_outline_color': '#FF00FF',
+        'banner_outline_offset': 3.0,
+        'banner_shadow_enabled': True,
+        'banner_shadow_color': '#3366AA',
+        'banner_shadow_offset_x': 4.0,
+        'banner_shadow_offset_y': 3.0,
         'banner_duration': 3.5,
         'current_language_code': 'es',
     }
@@ -84,6 +91,9 @@ def test_banner_overlay_creates_gradient_and_filter(tmp_path, monkeypatch):
         assert top_pixel != bottom_pixel
         assert top_pixel == (0x11, 0x22, 0x33)
         assert bottom_pixel == (0x44, 0x55, 0x66)
+        pixels = list(img.getdata())
+        assert any(px[:3] == (0xFF, 0x00, 0xFF) for px in pixels)
+        assert any(px[:3] == (0x33, 0x66, 0xAA) for px in pixels)
 
     cmd = captured['cmd']
     assert '-filter_complex' in cmd
@@ -91,3 +101,28 @@ def test_banner_overlay_creates_gradient_and_filter(tmp_path, monkeypatch):
     assert "overlay=0:0:enable='between(t,0,3.500)'" in filter_str
     assert '-loop' in cmd
     assert params['banner_overlay_duration'] == 3.5
+
+
+def test_generate_banner_image_outline_shadow():
+    config = BannerRenderConfig(
+        text="Teste",
+        video_width=640,
+        video_height=360,
+        use_gradient=False,
+        solid_color="#FFFFFF",
+        gradient_start="#FFFFFF",
+        gradient_end="#FFFFFF",
+        font_color="#000000",
+        outline_enabled=True,
+        outline_color="#00FF00",
+        outline_offset=2,
+        shadow_enabled=True,
+        shadow_color="#0000FF",
+        shadow_offset_x=5,
+        shadow_offset_y=3,
+    )
+
+    image = generate_banner_image(config)
+    pixels = list(image.getdata())
+    assert any(px[:3] == (0, 255, 0) for px in pixels)
+    assert any(px[:3] == (0, 0, 255) for px in pixels)
