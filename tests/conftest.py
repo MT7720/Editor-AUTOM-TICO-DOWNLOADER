@@ -4,4 +4,5 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+os.environ.setdefault("KEYGEN_ACCOUNT_ID", "test-account")
 os.environ.setdefault("KEYGEN_PRODUCT_TOKEN", "test-token")

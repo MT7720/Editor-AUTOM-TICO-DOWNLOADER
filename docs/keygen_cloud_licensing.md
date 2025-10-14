@@ -31,6 +31,26 @@ export KEYGEN_PRODUCT_TOKEN="<TOKEN DE PRODUTO GERADO NO PAINEL>"
 # export KEYGEN_API_BASE_URL="https://api.keygen.sh/v1/accounts/<ACCOUNT ID>"
 ```
 
+A partir desta revisão, **os segredos não são mais embutidos** nos binários nem
+ofuscados no código-fonte. O módulo `security.secrets` exige que as credenciais
+cheguem através de um canal autenticado, suportando os seguintes formatos:
+
+- `KEYGEN_LICENSE_BUNDLE`: cadeia Base64 com um JSON assinado entregue pelo
+  *token broker* interno. Este JSON deve conter `account_id`, `product_token`,
+  `channel`/`proof` e, opcionalmente, `api_base_url`.
+- `KEYGEN_LICENSE_BUNDLE_PATH`: caminho para um ficheiro JSON com o mesmo
+  conteúdo do item acima. O script de build verifica se o ficheiro possui
+  permissões restritivas (ex.: `chmod 600`).
+- `KEYGEN_ACCOUNT_ID` + `KEYGEN_PRODUCT_TOKEN`: *fallback* apenas para ambientes
+  onde as variáveis já são protegidas (por exemplo, segredos do CI). Sempre que
+  possível, prefira o bundle assinado.
+
+O `build_all.bat` aborta imediatamente se nenhuma das opções for encontrada.
+Antes de iniciar o PyInstaller, execute o processo interno que solicita um
+bundle temporário ao broker (por exemplo, o job da pipeline CI que autentica na
+VPN corporativa) e defina `KEYGEN_LICENSE_BUNDLE_PATH=secrets.json`. O ficheiro
+não deve ser versionado e precisa ser descartado após o build.
+
 A aplicação desktop continua a validar os tokens offline com a chave pública
 configurada em `security/license_authority_keys.json`. Certifique-se de que este
 ficheiro contém o par de chaves Ed25519 correcto ou defina

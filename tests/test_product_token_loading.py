@@ -1,29 +1,79 @@
-import license_checker
+import base64
+import importlib
+import json
+import sys
+
 import pytest
 
-
-def test_get_product_token_from_env(monkeypatch):
-    monkeypatch.setenv(license_checker.PRODUCT_TOKEN_ENV_VAR, "VALID_TEST_TOKEN")
-    license_checker.get_product_token.cache_clear()
-
-    token = license_checker.get_product_token()
-
-    assert token == "VALID_TEST_TOKEN"
-
-    license_checker.get_product_token.cache_clear()
+from security import secrets
 
 
-def test_get_product_token_requires_configuration(monkeypatch, tmp_path):
-    monkeypatch.delenv(license_checker.PRODUCT_TOKEN_ENV_VAR, raising=False)
-    monkeypatch.delenv(license_checker.PRODUCT_TOKEN_FILE_ENV_VAR, raising=False)
+def _reload_license_checker():
+    sys.modules.pop("license_checker", None)
+    module = importlib.import_module("license_checker")
+    module.get_license_service_credentials.cache_clear()
+    return module
 
-    dummy_user_token_path = tmp_path / "product_token.dat"
-    monkeypatch.setattr(
-        license_checker, "USER_PRODUCT_TOKEN_PATH", str(dummy_user_token_path)
-    )
-    license_checker.get_product_token.cache_clear()
 
-    with pytest.raises(RuntimeError):
-        license_checker.get_product_token()
+def test_load_license_secrets_from_env(monkeypatch):
+    monkeypatch.setenv("KEYGEN_ACCOUNT_ID", "env-account")
+    monkeypatch.setenv("KEYGEN_PRODUCT_TOKEN", "env-token")
+    monkeypatch.setenv("KEYGEN_API_BASE_URL", "https://example.test/accounts/env-account")
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
 
-    license_checker.get_product_token.cache_clear()
+    credentials = secrets.load_license_secrets()
+
+    assert credentials.account_id == "env-account"
+    assert credentials.product_token == "env-token"
+    assert credentials.api_base_url == "https://example.test/accounts/env-account"
+
+
+def test_load_license_secrets_from_bundle(monkeypatch):
+    payload = {
+        "account_id": "bundle-account",
+        "product_token": "bundle-token",
+        "channel": "brokered",
+    }
+    encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+
+    monkeypatch.setenv("KEYGEN_LICENSE_BUNDLE", encoded)
+    monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
+
+    credentials = secrets.load_license_secrets()
+
+    assert credentials.account_id == "bundle-account"
+    assert credentials.product_token == "bundle-token"
+    assert credentials.api_base_url.endswith("/bundle-account")
+
+
+def test_missing_configuration_raises(monkeypatch):
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
+    monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
+
+    with pytest.raises(secrets.SecretLoaderError):
+        secrets.load_license_secrets()
+
+
+def test_license_checker_exposes_cached_credentials(monkeypatch):
+    monkeypatch.setenv("KEYGEN_ACCOUNT_ID", "cached-account")
+    monkeypatch.setenv("KEYGEN_PRODUCT_TOKEN", "cached-token")
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
+
+    module = _reload_license_checker()
+
+    credentials = module.get_license_service_credentials()
+    assert credentials.account_id == "cached-account"
+    assert module.get_product_token() == "cached-token"
+    assert module.get_api_base_url().endswith("/cached-account")
+
+    # Atualiza o ambiente para garantir que o cache é reutilizado enquanto não for limpo.
+    monkeypatch.setenv("KEYGEN_PRODUCT_TOKEN", "updated-token")
+    assert module.get_product_token() == "cached-token"
+
+    module.get_license_service_credentials.cache_clear()
+    assert module.get_product_token() == "updated-token"
