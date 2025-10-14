@@ -104,6 +104,9 @@ class ConfigManager:
                     file_content = f.read()
                     if file_content:
                         saved_config = json.loads(file_content)
+                        for key in list(saved_config.keys()):
+                            if key.startswith("banner_preview_language"):
+                                saved_config.pop(key, None)
                         default_config.update(saved_config)
         except Exception as exc:  # pragma: no cover - defensive I/O
             logger.warning("Não foi possível carregar o ficheiro de configuração: %s", exc)
