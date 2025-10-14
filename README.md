@@ -34,6 +34,12 @@ fora do repositório). O script de build irá:
 2. Assinar cada entrada utilizando `tools/sign_runtime_manifest.py`.
 3. Incorporar o manifesto assinado no pacote final.
 
+> ✅ O ficheiro `security/product_token.dat` deixou de fazer parte dos artefatos
+> monitorados pelo manifesto e não deve ser incluído nos pacotes distribuídos.
+> As credenciais do Keygen devem continuar a ser injectadas dinamicamente via
+> `KEYGEN_LICENSE_BUNDLE`/`KEYGEN_LICENSE_BUNDLE_PATH` durante o processo de
+> build.
+
 Caso precise atualizar manualmente o manifesto, execute:
 
 ```bash

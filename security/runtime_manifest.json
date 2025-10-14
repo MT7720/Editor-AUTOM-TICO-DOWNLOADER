@@ -14,12 +14,6 @@
             "path": "security/license_authority_keys.json",
             "signature": "ba1fb5cd8cb0fb1c38aece7e17c861932ff639528354fe5a624f621e60b1935e"
         },
-        "license_secrets": {
-            "hash": "34851a864e79d2ea0d3463937108a26a6abe3fd204bc2e5ee7eb9bde5924b0c3",
-            "normalize_newlines": false,
-            "path": "security/product_token.dat",
-            "signature": "7957e0d02ca08c3aca5a6f28f74a3c0bc1bec7b8efb5f31444a6e81aaf03af0f"
-        },
         "process_manager": {
             "hash": "3b69a546d9a7fcdb498d897b6d4a35c1bed851f277372abba6a5f76bcee7aba9",
             "normalize_newlines": true,
