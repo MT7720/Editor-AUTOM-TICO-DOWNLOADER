@@ -547,7 +547,8 @@ class VideoEditorApp:
         tab = ttk.Frame(self.notebook, padding=(20, 15))
         self.notebook.add(tab, text=" Editor: Vídeo ")
         tab.columnconfigure(0, weight=1)
-        
+        tab.rowconfigure(1, weight=1)
+
         self.video_settings_section = ttk.LabelFrame(tab, text=" Configurações Gerais de Vídeo ", padding=15)
         self.video_settings_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
         self.video_settings_section.columnconfigure(1, weight=1)
@@ -557,8 +558,10 @@ class VideoEditorApp:
         self.video_codec_combobox = ttk.Combobox(self.video_settings_section, textvariable=self.video_codec_var, state="readonly")
         self.video_codec_combobox.grid(row=1, column=1, sticky="ew")
 
+        self._create_banner_section(tab, row=1)
+
         self.slideshow_section = ttk.LabelFrame(tab, text=" Configurações de Slideshow ", padding=15)
-        self.slideshow_section.grid(row=1, column=0, sticky="ew")
+        self.slideshow_section.grid(row=2, column=0, sticky="ew")
         self.slideshow_section.columnconfigure(1, weight=1)
         
         ttk.Label(self.slideshow_section, text="Duração por Imagem (s):").grid(row=0, column=0, sticky="w", padx=(0,10), pady=5)
@@ -578,7 +581,7 @@ class VideoEditorApp:
         ttk.Combobox(self.slideshow_section, textvariable=self.motion_var, values=SLIDESHOW_MOTIONS, state="readonly").grid(row=3, column=1, sticky="ew")
 
         fade_out_section = ttk.LabelFrame(tab, text=" Encerramento (Fade Out) ", padding=15)
-        fade_out_section.grid(row=2, column=0, sticky="ew", pady=(20, 0))
+        fade_out_section.grid(row=3, column=0, sticky="ew", pady=(20, 0))
         fade_out_section.columnconfigure(1, weight=1)
 
         cb = ttk.Checkbutton(
@@ -744,10 +747,9 @@ class VideoEditorApp:
         self.intro_default_text_widget.grid(row=9, column=0, columnspan=2, sticky="ew")
         settings_box.rowconfigure(9, weight=1)
         self.intro_default_text_widget.insert("1.0", self.intro_default_text_var.get())
-        tab.rowconfigure(2, weight=1)
+        tab.rowconfigure(1, weight=1)
         self._set_intro_language_display_from_code(self.intro_language_var.get())
         self._refresh_intro_state()
-        self._create_banner_section(tab)
 
     def _set_intro_language_display_from_code(self, code: str):
         selected_label = next((label for value, label in self._intro_language_choices if value == code), None)
@@ -784,11 +786,12 @@ class VideoEditorApp:
     def _collect_intro_texts(self) -> Dict[str, str]:
         return {}
 
-    def _create_banner_section(self, tab):
+    def _create_banner_section(self, tab, row: int = 1):
+        tab.rowconfigure(row, weight=1)
         banner_section = ttk.LabelFrame(tab, text=" Faixa de Destaque ", padding=15)
-        banner_section.grid(row=2, column=0, sticky="nsew")
+        banner_section.grid(row=row, column=0, sticky="nsew")
         banner_section.columnconfigure(1, weight=1)
-        banner_section.rowconfigure(10, weight=1)
+        banner_section.rowconfigure(11, weight=1)
 
         self.banner_enabled_check = ttk.Checkbutton(
             banner_section,
@@ -799,8 +802,18 @@ class VideoEditorApp:
         )
         self.banner_enabled_check.grid(row=0, column=0, columnspan=2, sticky="w")
 
+        ttk.Label(
+            banner_section,
+            text=(
+                "A faixa é exibida logo após a digitalização, quando o vídeo principal começa, "
+                "e permanece durante todo o conteúdo."
+            ),
+            wraplength=760,
+            justify=LEFT,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 2))
+
         language_frame = ttk.Frame(banner_section)
-        language_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        language_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         language_frame.columnconfigure(1, weight=1)
         ttk.Label(language_frame, text="Idioma preferido para traduções automáticas:").grid(
             row=0, column=0, sticky="w", padx=(0, 10)
@@ -820,7 +833,7 @@ class VideoEditorApp:
 
         self.banner_duration_frame = self._create_slider_control(
             banner_section,
-            2,
+            3,
             "Duração (s):",
             self.banner_duration_var,
             1.0,
@@ -830,17 +843,25 @@ class VideoEditorApp:
         )
 
         colors_frame = ttk.LabelFrame(banner_section, text=" Cores da Faixa ", padding=10)
-        colors_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        colors_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         colors_frame.columnconfigure(1, weight=1)
 
-        self.banner_use_gradient_check = ttk.Checkbutton(
-            colors_frame,
-            text="Usar degradê",
-            variable=self.banner_use_gradient_var,
-            bootstyle="round-toggle",
-            command=lambda: (self._refresh_banner_gradient_state(), self.on_banner_settings_change()),
-        )
-        self.banner_use_gradient_check.grid(row=0, column=0, columnspan=2, sticky="w")
+        color_mode_frame = ttk.Frame(colors_frame)
+        color_mode_frame.grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(color_mode_frame, text="Modo de preenchimento:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        self._banner_color_mode_buttons = []
+        for idx, (value, label) in enumerate(((False, "Cor única"), (True, "Degradê"))):
+            btn = ttk.Radiobutton(
+                color_mode_frame,
+                text=label,
+                variable=self.banner_use_gradient_var,
+                value=value,
+                bootstyle="outline-toolbutton",
+                command=lambda v=value: self._on_banner_color_mode_selected(v),
+            )
+            btn.grid(row=0, column=idx + 1, sticky="w", padx=(0 if idx == 0 else 6, 0))
+            self._banner_color_mode_buttons.append((value, btn))
 
         ttk.Label(colors_frame, text="Cor única:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(5, 0))
         solid_picker = self._create_color_picker(
@@ -857,22 +878,22 @@ class VideoEditorApp:
         self._banner_color_frames = [solid_picker, gradient_start_picker, gradient_end_picker]
 
         font_frame = ttk.Frame(banner_section)
-        font_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        font_frame.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(5, 0))
         ttk.Label(font_frame, text="Cor do texto:").grid(row=0, column=0, sticky="w", padx=(0, 10))
         self.banner_font_color_picker = self._create_color_picker(
             font_frame, 0, 1, self.banner_font_color_var, self.on_banner_settings_change
         )
 
         ttk.Label(banner_section, text="Texto padrão da faixa:").grid(
-            row=5, column=0, columnspan=2, sticky="w", pady=(10, 5)
+            row=6, column=0, columnspan=2, sticky="w", pady=(10, 5)
         )
         self.banner_default_text_widget = scrolledtext.ScrolledText(banner_section, height=4, wrap="word")
-        self.banner_default_text_widget.grid(row=6, column=0, columnspan=2, sticky="ew")
+        self.banner_default_text_widget.grid(row=7, column=0, columnspan=2, sticky="ew")
         self.banner_default_text_widget.insert("1.0", self.banner_default_text_var.get())
         self.banner_default_text_widget.bind("<KeyRelease>", self._on_banner_default_text_change)
 
         translation_frame = ttk.Frame(banner_section)
-        translation_frame.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        translation_frame.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         translation_frame.columnconfigure(1, weight=1)
         ttk.Label(translation_frame, text="Idioma para tradução manual:").grid(
             row=0, column=0, sticky="w", padx=(0, 10)
@@ -906,13 +927,13 @@ class VideoEditorApp:
         self.banner_translation_text_widget = scrolledtext.ScrolledText(
             banner_section, height=4, wrap="word"
         )
-        self.banner_translation_text_widget.grid(row=8, column=0, columnspan=2, sticky="ew")
+        self.banner_translation_text_widget.grid(row=9, column=0, columnspan=2, sticky="ew")
         self.banner_translation_text_widget.bind(
             "<KeyRelease>", self._on_banner_translation_text_change
         )
 
         preview_language_frame = ttk.Frame(banner_section)
-        preview_language_frame.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        preview_language_frame.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         preview_language_frame.columnconfigure(1, weight=1)
         ttk.Label(preview_language_frame, text="Idioma para pré-visualização:").grid(
             row=0, column=0, sticky="w", padx=(0, 10)
@@ -934,7 +955,7 @@ class VideoEditorApp:
         )
 
         preview_section = ttk.LabelFrame(banner_section, text=" Pré-visualização da Faixa ", padding=5)
-        preview_section.grid(row=10, column=0, columnspan=2, sticky="nsew")
+        preview_section.grid(row=11, column=0, columnspan=2, sticky="nsew")
         preview_section.rowconfigure(0, weight=1)
         preview_section.columnconfigure(0, weight=1)
         self.banner_preview = BannerPreview(preview_section)
@@ -1044,6 +1065,12 @@ class VideoEditorApp:
             del self.banner_texts[code]
         self.on_banner_settings_change()
 
+    def _on_banner_color_mode_selected(self, use_gradient: bool):
+        self.banner_use_gradient_var.set(use_gradient)
+        self._refresh_banner_gradient_state()
+        self._refresh_banner_color_mode_buttons()
+        self.on_banner_settings_change()
+
     def _refresh_banner_state(self):
         enabled = self.banner_enabled_var.get()
         combo_state = "readonly" if enabled else DISABLED
@@ -1060,8 +1087,6 @@ class VideoEditorApp:
                             grandchild.configure(state=general_state)
                         except Exception:
                             pass
-        if hasattr(self, 'banner_use_gradient_check'):
-            self.banner_use_gradient_check.configure(state=general_state)
         if hasattr(self, 'banner_translation_combobox'):
             state = combo_state if self._banner_translation_codes else DISABLED
             self.banner_translation_combobox.configure(state=state)
@@ -1075,6 +1100,13 @@ class VideoEditorApp:
             self.banner_default_text_widget.configure(state=general_state)
         if hasattr(self, 'banner_preview_language_combobox'):
             self.banner_preview_language_combobox.configure(state=combo_state)
+        if hasattr(self, '_banner_color_mode_buttons'):
+            for _, button in self._banner_color_mode_buttons:
+                try:
+                    button.configure(state=general_state)
+                except Exception:
+                    pass
+            self._refresh_banner_color_mode_buttons()
         if hasattr(self, '_banner_color_frames'):
             for frame in self._banner_color_frames:
                 for child in frame.winfo_children():
@@ -1090,6 +1122,17 @@ class VideoEditorApp:
                     pass
         self._refresh_banner_gradient_state()
 
+    def _refresh_banner_color_mode_buttons(self):
+        if not hasattr(self, '_banner_color_mode_buttons'):
+            return
+        use_gradient = bool(self.banner_use_gradient_var.get())
+        for value, button in self._banner_color_mode_buttons:
+            try:
+                style = "primary-toolbutton" if bool(value) == use_gradient else "outline-toolbutton"
+                button.configure(bootstyle=style)
+            except Exception:
+                pass
+
     def _refresh_banner_gradient_state(self):
         enabled = self.banner_enabled_var.get()
         use_gradient = self.banner_use_gradient_var.get()
@@ -1097,7 +1140,10 @@ class VideoEditorApp:
             return
         frames = self._banner_color_frames
         for idx, frame in enumerate(frames):
-            allow = enabled and (idx == 0 or use_gradient)
+            if idx == 0:
+                allow = enabled and not use_gradient
+            else:
+                allow = enabled and use_gradient
             state = NORMAL if allow else DISABLED
             for child in frame.winfo_children():
                 try:
