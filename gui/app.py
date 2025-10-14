@@ -1539,6 +1539,37 @@ class VideoEditorApp:
         ttk.Radiobutton(format_frame, text="Vídeo (MP4)", variable=self.download_format_var, value="MP4").pack(side=LEFT, padx=(0, 15))
         ttk.Radiobutton(format_frame, text="Áudio (MP3)", variable=self.download_format_var, value="MP3").pack(side=LEFT)
 
+        playlist_frame = ttk.Frame(options_frame)
+        playlist_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 5))
+        playlist_frame.columnconfigure(2, weight=1)
+
+        self.download_playlist_checkbutton = ttk.Checkbutton(
+            playlist_frame,
+            text="Baixar playlist completa",
+            variable=self.download_playlist_enabled_var,
+            command=self._downloader_on_playlist_toggle,
+            bootstyle="round-toggle",
+        )
+        self.download_playlist_checkbutton.grid(row=0, column=0, padx=(0, 10), sticky="w")
+        ToolTip(
+            self.download_playlist_checkbutton,
+            "Quando marcado, o yt-dlp baixa todos os itens da playlist encontrada na URL.",
+        )
+
+        ttk.Label(playlist_frame, text="Itens da playlist:").grid(row=0, column=1, padx=(0, 5), sticky="w")
+        self.download_playlist_items_combobox = ttk.Combobox(
+            playlist_frame,
+            textvariable=self.download_playlist_items_var,
+            values=("", "1-5", "1-10", "1-20", "1-50"),
+            width=12,
+        )
+        self.download_playlist_items_combobox.grid(row=0, column=2, sticky="w")
+        ToolTip(
+            self.download_playlist_items_combobox,
+            "Opcional: limite itens (ex.: 1-10 ou 1,3,5). Deixe em branco para todos os itens.",
+        )
+        self._downloader_on_playlist_toggle()
+
         action_frame = ttk.Frame(tab)
         action_frame.grid(row=2, column=0, padx=0, pady=10, sticky="ew")
         action_frame.columnconfigure(0, weight=1)
@@ -2375,68 +2406,272 @@ class VideoEditorApp:
         self.downloader_log_textbox.configure(state="normal"); self.downloader_log_textbox.delete("1.0", "end"); self.downloader_log_textbox.configure(state="disabled")
         self.download_thread = threading.Thread(target=self._downloader_run_batch, daemon=True); self.download_thread.start()
 
+    def _downloader_on_playlist_toggle(self):
+        enabled = bool(self.download_playlist_enabled_var.get())
+        if hasattr(self, "download_playlist_items_combobox"):
+            state = "normal" if enabled else "disabled"
+            try:
+                self.download_playlist_items_combobox.configure(state=state)
+            except tk.TclError:
+                # Defensive: combobox may not be fully initialized during tests
+                pass
+
+    def _downloader_estimate_entries(self, url: str, playlist_enabled: bool, playlist_items: str) -> int:
+        if not playlist_enabled:
+            return 1
+
+        options: Dict[str, Any] = {
+            "quiet": True,
+            "skip_download": True,
+            "no_warnings": True,
+        }
+        if playlist_items:
+            options["playlist_items"] = playlist_items
+
+        try:
+            with yt_dlp.YoutubeDL(options) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as exc:
+            self._downloader_log(
+                f"AVISO: Não foi possível estimar a quantidade de itens da playlist ({exc}). Considerando apenas 1 vídeo."
+            )
+            return 1
+
+        entries = info.get("entries") if isinstance(info, dict) else None
+        if not entries:
+            return 1
+
+        try:
+            count = len(entries)
+        except TypeError:
+            count = 0
+            for _ in entries:
+                count += 1
+
+        return max(1, count)
+
+    def _downloader_parse_percent(self, value: Optional[str]) -> Optional[float]:
+        if not value:
+            return None
+        value = value.strip().replace('%', '')
+        try:
+            return max(0.0, min(float(value) / 100.0, 1.0))
+        except ValueError:
+            return None
+
+    def _downloader_increment_overall(self, amount: int = 1) -> None:
+        if amount <= 0:
+            return
+        total = getattr(self, '_downloader_overall_total', 0)
+        if total <= 0:
+            return
+        completed = getattr(self, '_downloader_overall_completed', 0) + amount
+        completed = min(completed, total)
+        self._downloader_overall_completed = completed
+        progress_value = completed / total
+        self._downloader_update_ui('overall_progress', {'value': progress_value})
+        self._downloader_update_ui('overall_status', {'text': f"{completed}/{total} concluídos"})
+
     def _downloader_run_batch(self):
-        # ... (sem alterações) ...
-        urls = [url.strip() for url in self.downloader_url_textbox.get("1.0", "end").splitlines() if url.strip() and re.match(r'https?://', url)]
+        urls = [
+            url.strip()
+            for url in self.downloader_url_textbox.get('1.0', 'end').splitlines()
+            if url.strip() and re.match(r"https?://", url)
+        ]
         if not urls:
-            self._downloader_log("ERRO: Nenhuma URL válida foi fornecida.")
-            self.progress_queue.put(("downloader_finished",)); return
-        total_videos = len(urls)
-        self._downloader_log(f"======= INICIANDO LOTE DE {total_videos} VÍDEO(S) =======")
+            self._downloader_log('ERRO: Nenhuma URL válida foi fornecida.')
+            self.progress_queue.put(('downloader_finished',))
+            return
+
+        playlist_enabled = bool(self.download_playlist_enabled_var.get())
+        playlist_items = (self.download_playlist_items_var.get() or '').strip()
+
+        estimated_counts: List[int] = []
+        total_expected = 0
+        for url in urls:
+            count = self._downloader_estimate_entries(url, playlist_enabled, playlist_items)
+            estimated_counts.append(count)
+            total_expected += count
+
+        if total_expected <= 0:
+            total_expected = len(urls)
+
+        self._downloader_overall_total = max(1, total_expected)
+        self._downloader_overall_completed = 0
+
+        self._downloader_log(
+            f"======= INICIANDO LOTE DE {total_expected} ITEM(NS) DISTRIBUÍDOS EM {len(urls)} LINK(S) ======="
+        )
         self._downloader_update_ui('overall_progress', {'value': 0})
-        for i, url in enumerate(urls):
-            self._downloader_update_ui('overall_status', {'text': f"Processando vídeo {i+1} de {total_videos}"})
-            try: self._downloader_download_single_video(url)
+        self._downloader_update_ui('overall_status', {'text': f"0/{self._downloader_overall_total} concluídos"})
+
+        for index, url in enumerate(urls):
+            expected_for_link = max(1, estimated_counts[index])
+            status_parts = [f"Processando link {index + 1} de {len(urls)}"]
+            if expected_for_link > 1:
+                status_parts.append(f"({expected_for_link} vídeos previstos)")
+            else:
+                status_parts.append('(1 vídeo previsto)')
+            self._downloader_update_ui('status', {'text': ' '.join(status_parts), 'bootstyle': 'info'})
+
+            try:
+                self._downloader_download_single_video(
+                    url,
+                    expected_entries=expected_for_link,
+                    link_index=index + 1,
+                    total_links=len(urls),
+                )
             except Exception as e:
                 self._downloader_log(f"ERRO IRRECUPERÁVEL no link '{url}': {e}")
-                self._downloader_update_ui('status', {'text': f"Falha ao baixar: {url}", 'bootstyle': "danger"})
-            self._downloader_update_ui('overall_progress', {'value': (i + 1) / total_videos})
-        self._downloader_log("======= LOTE CONCLUÍDO =======")
-        self._downloader_update_ui('status', {'text': "✨ Todos os downloads foram concluídos!", 'bootstyle': "success"})
-        self._downloader_update_ui('overall_status', {'text': f"{total_videos}/{total_videos} concluídos"})
-        self.progress_queue.put(("downloader_finished",))
+                self._downloader_update_ui('status', {'text': f"Falha ao baixar: {url}", 'bootstyle': 'danger'})
 
-    def _downloader_download_single_video(self, url):
-        # ... (sem alterações) ...
-        self._downloader_update_ui('status', {'text': f"Analisando: {url[:60]}...", 'bootstyle': "info"})
+        self._downloader_log('======= LOTE CONCLUÍDO =======')
+        total = max(1, getattr(self, '_downloader_overall_total', 1))
+        completed = min(total, getattr(self, '_downloader_overall_completed', 0))
+        self._downloader_update_ui('overall_progress', {'value': completed / total})
+        self._downloader_update_ui('overall_status', {'text': f"{completed}/{total} concluídos"})
+        self._downloader_update_ui('status', {'text': '✨ Todos os downloads foram concluídos!', 'bootstyle': 'success'})
+        self.progress_queue.put(('downloader_finished',))
+
+    def _downloader_download_single_video(
+        self,
+        url: str,
+        expected_entries: int = 1,
+        link_index: int = 1,
+        total_links: int = 1,
+    ) -> None:
+        playlist_enabled = bool(self.download_playlist_enabled_var.get())
+        playlist_items = (self.download_playlist_items_var.get() or '').strip()
+        expected_entries = max(1, expected_entries)
+
+        display_url = url if len(url) <= 60 else f"{url[:57]}..."
+        self._downloader_update_ui(
+            'status',
+            {
+                'text': f"Analisando link {link_index}/{total_links}: {display_url}",
+                'bootstyle': 'info',
+            },
+        )
         self._downloader_update_ui('progress', {'value': 0, 'mode': 'indeterminate'})
         self._downloader_log(f"\n--- Processando: {url} ---")
-        command = [
-            self.yt_dlp_engine_path, url,
-            '--ffmpeg-location', self.ffmpeg_path_var.get(),
-            '--no-playlist', '--windows-filenames',
-            '-o', os.path.join(self.download_output_path_var.get(), '%(title)s [%(id)s].%(ext)s'),
-            '--concurrent-fragments', '16', '--no-warnings', '--embed-thumbnail',
+
+        output_template = os.path.join(
+            self.download_output_path_var.get(),
+            '%(title)s [%(id)s].%(ext)s',
+        )
+
+        command: List[str] = [
+            self.yt_dlp_engine_path,
+            url,
+            '--ffmpeg-location',
+            self.ffmpeg_path_var.get(),
+            '--windows-filenames',
+            '-o',
+            output_template,
+            '--concurrent-fragments',
+            '16',
+            '--no-warnings',
+            '--embed-thumbnail',
+            '--newline',
+            '--progress-template',
+            'download:{"type":"%(progress._type)s","status":"%(progress._status)s","percent":"%(progress._percent_str)s","eta":"%(progress._eta_str)s","index":"%(playlist_index)s","count":"%(playlist_count)s"}',
         ]
-        if self.download_format_var.get() == "MP4":
-            command.extend(['-f', 'bestvideo[vcodec^=avc]+bestaudio[ext=m4a]/bestvideo[vcodec^=h264]+bestaudio/best[ext=mp4]/best', '--merge-output-format', 'mp4'])
+
+        if playlist_enabled:
+            command.append('--yes-playlist')
+            if playlist_items and playlist_items.lower() not in {'todos', 'tudo'}:
+                command.extend(['--playlist-items', playlist_items])
+        else:
+            command.append('--no-playlist')
+
+        if self.download_format_var.get() == 'MP4':
+            command.extend([
+                '-f',
+                'bestvideo[vcodec^=avc]+bestaudio[ext=m4a]/bestvideo[vcodec^=h264]+bestaudio/best[ext=mp4]/best',
+                '--merge-output-format',
+                'mp4',
+            ])
         else:
             command.extend(['-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0'])
-        
+
         creationflags = subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', creationflags=creationflags)
-        
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            creationflags=creationflags,
+        )
+
         self._downloader_log(f"Executando comando: {' '.join(command)}")
+
+        completed_ids: Set[str] = set()
+        fallback_index = 0
+
         for line in iter(process.stdout.readline, ''):
             line = line.strip()
-            if not line: continue
-            self._downloader_log(line)
-            match = re.search(r'\[download\]\s+([\d\.]+)% of.*ETA ([\d:]+)', line)
-            if match:
-                progress = float(match.group(1)) / 100
-                eta = match.group(2)
-                self._downloader_update_ui('progress', {'value': progress, 'mode': 'determinate'})
-                self._downloader_update_ui('status', {'text': f"Baixando... {progress*100:.1f}% (ETA: {eta})", 'bootstyle': "info"})
-        
+            if not line:
+                continue
+
+            try:
+                progress_data = json.loads(line)
+            except json.JSONDecodeError:
+                self._downloader_log(line)
+                match = re.search(r'\[download\]\s+([\d\.]+)% of.*ETA ([\d:]+)', line)
+                if match:
+                    progress = float(match.group(1)) / 100
+                    eta = match.group(2)
+                    self._downloader_update_ui('progress', {'value': progress, 'mode': 'determinate'})
+                    self._downloader_update_ui(
+                        'status',
+                        {'text': f"Baixando... {progress*100:.1f}% (ETA: {eta})", 'bootstyle': 'info'},
+                    )
+                continue
+
+            if not isinstance(progress_data, dict) or progress_data.get('type') != 'download':
+                continue
+
+            status = progress_data.get('status')
+            percent = self._downloader_parse_percent(progress_data.get('percent'))
+            eta = progress_data.get('eta') or ''
+
+            if status == 'downloading' and percent is not None:
+                eta_text = eta if eta and eta.upper() != 'NA' else 'calculando...'
+                self._downloader_update_ui('progress', {'value': percent, 'mode': 'determinate'})
+                self._downloader_update_ui(
+                    'status',
+                    {'text': f"Baixando... {percent*100:.1f}% (ETA: {eta_text})", 'bootstyle': 'info'},
+                )
+            elif status == 'finished':
+                playlist_index = progress_data.get('index') or ''
+                if not playlist_index or playlist_index == 'NA':
+                    playlist_index = f'single_{fallback_index}'
+                    fallback_index += 1
+                if playlist_index not in completed_ids:
+                    completed_ids.add(playlist_index)
+                    self._downloader_log(f"Item concluído (índice {playlist_index}).")
+                    self._downloader_update_ui('progress', {'value': 1, 'mode': 'determinate'})
+                    self._downloader_update_ui('status', {'text': 'Item concluído!', 'bootstyle': 'success'})
+                    self._downloader_increment_overall(1)
+
         process.wait()
         process.stdout.close()
+
+        completed_count = len(completed_ids)
         if process.returncode == 0:
-            self._downloader_log("--- Download concluído com sucesso. ---")
-            self._downloader_update_ui('status', {'text': "Download Concluído!", 'bootstyle': "success"})
+            remaining = max(0, expected_entries - completed_count)
+            if remaining:
+                self._downloader_increment_overall(remaining)
+            self._downloader_log('--- Download concluído com sucesso. ---')
+            self._downloader_update_ui('status', {'text': 'Download Concluído!', 'bootstyle': 'success'})
             self._downloader_update_ui('progress', {'value': 1, 'mode': 'determinate'})
         else:
-            self._downloader_log(f"ERRO: O processo de download falhou com o código de saída {process.returncode}.")
-            self._downloader_update_ui('status', {'text': "Download Falhou!", 'bootstyle': "danger"})
+            self._downloader_log(
+                f"ERRO: O processo de download falhou com o código de saída {process.returncode}."
+            )
+            self._downloader_update_ui('status', {'text': 'Download Falhou!', 'bootstyle': 'danger'})
             self._downloader_update_ui('progress', {'value': 0, 'mode': 'determinate'})
 
     def check_queue(self):
@@ -2530,6 +2765,8 @@ class VideoEditorApp:
             'ffmpeg_path': self.ffmpeg_path_var.get(),
             'output_folder': self.output_folder.get(),
             'last_download_folder': self.download_output_path_var.get(),
+            'download_playlist_enabled': self.download_playlist_enabled_var.get(),
+            'download_playlist_items': self.download_playlist_items_var.get(),
             'last_image_folder': self.config.get('last_image_folder'),
             'last_root_folder': self.config.get('last_root_folder'),
             'last_mixed_folder': self.config.get('last_mixed_folder'),

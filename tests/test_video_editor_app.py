@@ -1,3 +1,4 @@
+import io
 import pytest
 import gui.app as app_module
 from pyvirtualdisplay import Display
@@ -101,3 +102,47 @@ def test_check_available_encoders_updates_ui(app, monkeypatch):
     assert "NVIDIA NVENC" in status_text
     assert "Intel Quick Sync Video" in status_text
     assert "AMD AMF" in status_text
+
+
+def test_downloader_playlist_flag_modifies_command(app, monkeypatch):
+    captured_commands = []
+
+    class DummyProcess:
+        def __init__(self, cmd, *args, **kwargs):
+            captured_commands.append(cmd)
+            self.stdout = io.StringIO(
+                '{"type":"download","status":"finished","percent":"100%","eta":"00:00","index":"1","count":"1"}\n'
+            )
+            self.returncode = 0
+
+        def wait(self):
+            return self.returncode
+
+    monkeypatch.setattr(app_module.subprocess, "Popen", DummyProcess)
+
+    app.yt_dlp_engine_path = "yt-dlp"
+    app.ffmpeg_path_var.set("/usr/bin/ffmpeg")
+    app.download_output_path_var.set("/tmp")
+
+    app._downloader_overall_total = 1
+    app._downloader_overall_completed = 0
+    app.download_playlist_enabled_var.set(False)
+    app.download_playlist_items_var.set("")
+    app._downloader_download_single_video("https://example.com/watch?v=123")
+
+    assert captured_commands, "Nenhum comando foi capturado."
+    command_no_playlist = captured_commands[-1]
+    assert "--no-playlist" in command_no_playlist
+    assert "--yes-playlist" not in command_no_playlist
+
+    app._downloader_overall_total = 3
+    app._downloader_overall_completed = 0
+    app.download_playlist_enabled_var.set(True)
+    app.download_playlist_items_var.set("1-3")
+    app._downloader_download_single_video("https://example.com/playlist", expected_entries=3)
+
+    command_with_playlist = captured_commands[-1]
+    assert "--no-playlist" not in command_with_playlist
+    assert "--yes-playlist" in command_with_playlist
+    assert "--playlist-items" in command_with_playlist
+    assert any(arg == "1-3" for arg in command_with_playlist)
