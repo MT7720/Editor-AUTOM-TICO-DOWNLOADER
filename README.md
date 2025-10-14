@@ -42,5 +42,6 @@ Para equipas que pretendem continuar a gerir clientes e políticas através do K
 ## Organização das abas do editor
 
 - **Editor: Vídeo** – ajuste a resolução, codec, comportamento do slideshow e configure o encerramento (fade out) que escurece a imagem enquanto reduz o áudio.
+- **Editor: Faixa** – personalize a faixa informativa exibida no início do conteúdo, escolhendo cores, duração, idioma e estilo do texto com pré-visualização integrada.
 - **Editor: Áudio** – concentre-se apenas nos volumes da narração e da trilha sonora, sem controles de encerramento duplicados.
 - **Editor: Introdução** – redija a mensagem inicial, escolha a fonte preferida, ative o negrito quando quiser dar mais presença ao texto e deixe o aplicativo traduzir automaticamente para cada idioma.
