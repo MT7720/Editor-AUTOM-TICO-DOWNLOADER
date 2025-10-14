@@ -53,6 +53,11 @@ class BannerRenderResult:
     text_width: int
     text_height: int
 
+    def __getattr__(self, item: str) -> Any:
+        """Delegate unknown attribute access to the underlying PIL image."""
+
+        return getattr(self.image, item)
+
 
 def compute_banner_height(video_height: int) -> int:
     """Calculate the banner height based on the target video height."""

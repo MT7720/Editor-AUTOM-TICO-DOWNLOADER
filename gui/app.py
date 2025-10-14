@@ -1020,9 +1020,9 @@ class VideoEditorApp:
             preview_container, text=" Pré-visualização da Faixa ", padding=12
         )
         preview_frame.grid(row=0, column=0, sticky="nsew")
-        preview_frame.rowconfigure(0, weight=1, minsize=260)
+        preview_frame.rowconfigure(0, weight=1, minsize=320)
         preview_frame.columnconfigure(0, weight=1)
-        self.banner_preview = BannerPreview(preview_frame, height=320)
+        self.banner_preview = BannerPreview(preview_frame, height=400)
         self.banner_preview.grid(row=0, column=0, sticky="nsew")
 
         self._refresh_banner_state()
