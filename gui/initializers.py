@@ -113,6 +113,13 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
     app.banner_font_color_var = ttk.StringVar(value=config.get("banner_font_color", "#FFFFFF"))
     app.banner_duration_var = ttk.DoubleVar(value=config.get("banner_duration", 5.0))
     app.banner_texts = dict(config.get("banner_texts") or {})
+    app.banner_outline_enabled_var = ttk.BooleanVar(value=config.get("banner_outline_enabled", False))
+    app.banner_outline_color_var = ttk.StringVar(value=config.get("banner_outline_color", "#000000"))
+    app.banner_outline_offset_var = ttk.DoubleVar(value=config.get("banner_outline_offset", 2.0))
+    app.banner_shadow_enabled_var = ttk.BooleanVar(value=config.get("banner_shadow_enabled", False))
+    app.banner_shadow_color_var = ttk.StringVar(value=config.get("banner_shadow_color", "#000000"))
+    app.banner_shadow_offset_x_var = ttk.DoubleVar(value=config.get("banner_shadow_offset_x", 3.0))
+    app.banner_shadow_offset_y_var = ttk.DoubleVar(value=config.get("banner_shadow_offset_y", 3.0))
 
     stored_language_code = config.get("single_language_code", "auto") or "auto"
     if isinstance(stored_language_code, str) and stored_language_code.lower() != "auto":

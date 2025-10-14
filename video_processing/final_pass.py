@@ -72,12 +72,19 @@ def _prepare_banner_overlay(
         text=final_text,
         video_width=max(1, int(video_w)),
         video_height=max(1, int(video_h)),
-        use_gradient=bool(params.get('banner_use_gradient')), 
+        use_gradient=bool(params.get('banner_use_gradient')),
         solid_color=str(params.get('banner_solid_color') or '#FFB347'),
         gradient_start=str(params.get('banner_gradient_start') or params.get('banner_solid_color') or '#FF512F'),
         gradient_end=str(params.get('banner_gradient_end') or params.get('banner_solid_color') or '#DD2476'),
         font_color=str(params.get('banner_font_color') or '#FFFFFF'),
         font_path=font_path if font_path and os.path.isfile(font_path) else None,
+        outline_enabled=bool(params.get('banner_outline_enabled')),
+        outline_color=str(params.get('banner_outline_color') or '#000000'),
+        outline_offset=float(params.get('banner_outline_offset', 2.0) or 0.0),
+        shadow_enabled=bool(params.get('banner_shadow_enabled')),
+        shadow_color=str(params.get('banner_shadow_color') or '#000000'),
+        shadow_offset_x=float(params.get('banner_shadow_offset_x', 3.0) or 0.0),
+        shadow_offset_y=float(params.get('banner_shadow_offset_y', 3.0) or 0.0),
     )
 
     try:

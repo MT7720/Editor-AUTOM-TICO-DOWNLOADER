@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -32,6 +32,13 @@ class BannerRenderConfig:
     gradient_end: str
     font_color: str
     font_path: Optional[str] = None
+    outline_enabled: bool = False
+    outline_color: str = "#000000"
+    outline_offset: float = 2.0
+    shadow_enabled: bool = False
+    shadow_color: str = "#000000"
+    shadow_offset_x: float = 3.0
+    shadow_offset_y: float = 3.0
 
 
 def compute_banner_height(video_height: int) -> int:
@@ -69,6 +76,24 @@ def _load_font(font_path: Optional[str], banner_height: int) -> ImageFont.ImageF
         return ImageFont.truetype("DejaVuSans.ttf", font_size)
     except Exception:
         return ImageFont.load_default()
+
+
+def _coerce_int(
+    value: Any,
+    *,
+    default: int = 0,
+    minimum: Optional[int] = None,
+    maximum: Optional[int] = None,
+) -> int:
+    try:
+        result = int(round(float(value)))
+    except (TypeError, ValueError):
+        result = default
+    if minimum is not None and result < minimum:
+        result = minimum
+    if maximum is not None and result > maximum:
+        result = maximum
+    return result
 
 
 def _wrap_text(text: str, draw: ImageDraw.ImageDraw, font: ImageFont.ImageFont, max_width: float) -> List[str]:
@@ -132,6 +157,14 @@ def generate_banner_image(config: BannerRenderConfig) -> Image.Image:
     draw = ImageDraw.Draw(banner)
 
     font_rgb = _parse_hex_color(config.font_color, default=(255, 255, 255))
+    outline_rgb = _parse_hex_color(config.outline_color, default=(0, 0, 0))
+    shadow_rgb = _parse_hex_color(config.shadow_color, default=(0, 0, 0))
+    outline_radius = _coerce_int(config.outline_offset, default=0, minimum=0, maximum=50)
+    shadow_dx = _coerce_int(config.shadow_offset_x, default=0, minimum=-200, maximum=200)
+    shadow_dy = _coerce_int(config.shadow_offset_y, default=0, minimum=-200, maximum=200)
+    outline_enabled = bool(config.outline_enabled and outline_radius > 0)
+    shadow_enabled = bool(config.shadow_enabled and (shadow_dx or shadow_dy))
+
     max_text_width = width * 0.9
     lines = _wrap_text(config.text, draw, font, max_text_width)
 
@@ -147,6 +180,16 @@ def generate_banner_image(config: BannerRenderConfig) -> Image.Image:
             bbox = draw.textbbox((0, 0), line, font=font)
             line_width = bbox[2] - bbox[0]
             x = max(0, int(round((width - line_width) / 2)))
+            if shadow_enabled:
+                draw.text((x + shadow_dx, y + shadow_dy), line, font=font, fill=(*shadow_rgb, 255))
+            if outline_enabled:
+                for dx in range(-outline_radius, outline_radius + 1):
+                    for dy in range(-outline_radius, outline_radius + 1):
+                        if dx == 0 and dy == 0:
+                            continue
+                        if abs(dx) + abs(dy) > outline_radius:
+                            continue
+                        draw.text((x + dx, y + dy), line, font=font, fill=(*outline_rgb, 255))
             draw.text((x, y), line, font=font, fill=(*font_rgb, 255))
             y += line_heights[idx] + line_spacing
 
