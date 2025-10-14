@@ -27,7 +27,7 @@ import ttkbootstrap as ttk
 import yt_dlp
 from PIL import Image, ImageTk
 import tkinter as tk
-from tkinter import filedialog, scrolledtext
+from tkinter import colorchooser, filedialog, scrolledtext
 from tkinter import font as tkFont
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
@@ -884,7 +884,7 @@ class VideoEditorApp:
             font_frame, 0, 1, self.banner_font_color_var, self.on_banner_settings_change
         )
 
-        ttk.Label(banner_section, text="Texto padrão da faixa:").grid(
+        ttk.Label(banner_section, text="Texto da faixa:").grid(
             row=6, column=0, columnspan=2, sticky="w", pady=(10, 5)
         )
         self.banner_default_text_widget = scrolledtext.ScrolledText(banner_section, height=4, wrap="word")
@@ -892,48 +892,8 @@ class VideoEditorApp:
         self.banner_default_text_widget.insert("1.0", self.banner_default_text_var.get())
         self.banner_default_text_widget.bind("<KeyRelease>", self._on_banner_default_text_change)
 
-        translation_frame = ttk.Frame(banner_section)
-        translation_frame.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 5))
-        translation_frame.columnconfigure(1, weight=1)
-        ttk.Label(translation_frame, text="Idioma para tradução manual:").grid(
-            row=0, column=0, sticky="w", padx=(0, 10)
-        )
-        translation_values = [
-            self.language_code_to_display[code]
-            for code in self.language_code_to_display
-            if code != "auto"
-        ]
-        self.banner_translation_display_var = ttk.StringVar()
-        self.banner_translation_language_var = ttk.StringVar()
-        self.banner_translation_combobox = ttk.Combobox(
-            translation_frame,
-            textvariable=self.banner_translation_display_var,
-            values=translation_values,
-            state="readonly" if translation_values else DISABLED,
-        )
-        self.banner_translation_combobox.grid(row=0, column=1, sticky="ew")
-        self.banner_translation_combobox.bind(
-            "<<ComboboxSelected>>", lambda event: self._on_banner_translation_language_change()
-        )
-        self.banner_translation_clear_button = ttk.Button(
-            translation_frame,
-            text="Limpar",
-            bootstyle="danger-outline",
-            command=self.clear_banner_translation,
-            width=10,
-        )
-        self.banner_translation_clear_button.grid(row=0, column=2, padx=(10, 0))
-
-        self.banner_translation_text_widget = scrolledtext.ScrolledText(
-            banner_section, height=4, wrap="word"
-        )
-        self.banner_translation_text_widget.grid(row=9, column=0, columnspan=2, sticky="ew")
-        self.banner_translation_text_widget.bind(
-            "<KeyRelease>", self._on_banner_translation_text_change
-        )
-
         preview_language_frame = ttk.Frame(banner_section)
-        preview_language_frame.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        preview_language_frame.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         preview_language_frame.columnconfigure(1, weight=1)
         ttk.Label(preview_language_frame, text="Idioma para pré-visualização:").grid(
             row=0, column=0, sticky="w", padx=(0, 10)
@@ -955,30 +915,11 @@ class VideoEditorApp:
         )
 
         preview_section = ttk.LabelFrame(banner_section, text=" Pré-visualização da Faixa ", padding=5)
-        preview_section.grid(row=11, column=0, columnspan=2, sticky="nsew")
+        preview_section.grid(row=9, column=0, columnspan=2, sticky="nsew")
         preview_section.rowconfigure(0, weight=1)
         preview_section.columnconfigure(0, weight=1)
         self.banner_preview = BannerPreview(preview_section)
         self.banner_preview.grid(row=0, column=0, sticky="nsew")
-
-        self._banner_translation_codes = [
-            code for code in self.language_code_to_display if code != "auto"
-        ]
-        if self._banner_translation_codes:
-            default_code = next(
-                (code for code in self.banner_texts.keys() if code in self._banner_translation_codes),
-                self._banner_translation_codes[0],
-            )
-            display = self.language_code_to_display.get(default_code, default_code)
-            self.banner_translation_display_var.set(display)
-            self.banner_translation_language_var.set(default_code)
-            self._current_banner_translation_code = default_code
-            self._load_banner_translation_text(default_code)
-        else:
-            self.banner_translation_combobox.configure(state=DISABLED)
-            self.banner_translation_text_widget.configure(state=DISABLED)
-            self.banner_translation_clear_button.configure(state=DISABLED)
-            self._current_banner_translation_code = None
 
         self._refresh_banner_state()
         self._refresh_banner_gradient_state()
@@ -1013,56 +954,9 @@ class VideoEditorApp:
         self.banner_preview_language_var.set(code)
         self.on_banner_settings_change()
 
-    def _store_current_banner_translation(self):
-        if not hasattr(self, 'banner_translation_text_widget'):
-            return
-        code = getattr(self, '_current_banner_translation_code', None)
-        if not code:
-            return
-        text_widget_state = self.banner_translation_text_widget.cget("state")
-        if text_widget_state == 'disabled':
-            return
-        raw_text = self.banner_translation_text_widget.get("1.0", "end").strip()
-        if raw_text:
-            self.banner_texts[code] = raw_text
-        elif code in self.banner_texts:
-            del self.banner_texts[code]
-
-    def _load_banner_translation_text(self, code: str):
-        if not hasattr(self, 'banner_translation_text_widget'):
-            return
-        text = self.banner_texts.get(code, "")
-        self.banner_translation_text_widget.delete("1.0", "end")
-        if text:
-            self.banner_translation_text_widget.insert("1.0", text)
-
-    def _on_banner_translation_language_change(self):
-        self._store_current_banner_translation()
-        label = self.banner_translation_display_var.get()
-        code = self.language_display_to_code.get(label)
-        if not code:
-            return
-        self.banner_translation_language_var.set(code)
-        self._current_banner_translation_code = code
-        self._load_banner_translation_text(code)
-        self.on_banner_settings_change()
-
     def _on_banner_default_text_change(self, event=None):
         text = self.banner_default_text_widget.get("1.0", "end").strip()
         self.banner_default_text_var.set(text)
-        self.on_banner_settings_change()
-
-    def _on_banner_translation_text_change(self, event=None):
-        self._store_current_banner_translation()
-        self.on_banner_settings_change()
-
-    def clear_banner_translation(self):
-        code = getattr(self, '_current_banner_translation_code', None)
-        if not code:
-            return
-        self.banner_translation_text_widget.delete("1.0", "end")
-        if code in self.banner_texts:
-            del self.banner_texts[code]
         self.on_banner_settings_change()
 
     def _on_banner_color_mode_selected(self, use_gradient: bool):
@@ -1087,15 +981,6 @@ class VideoEditorApp:
                             grandchild.configure(state=general_state)
                         except Exception:
                             pass
-        if hasattr(self, 'banner_translation_combobox'):
-            state = combo_state if self._banner_translation_codes else DISABLED
-            self.banner_translation_combobox.configure(state=state)
-        if hasattr(self, 'banner_translation_clear_button'):
-            clear_state = NORMAL if enabled and self._banner_translation_codes else DISABLED
-            self.banner_translation_clear_button.configure(state=clear_state)
-        if hasattr(self, 'banner_translation_text_widget'):
-            widget_state = general_state if self._banner_translation_codes else DISABLED
-            self.banner_translation_text_widget.configure(state=widget_state)
         if hasattr(self, 'banner_default_text_widget'):
             self.banner_default_text_widget.configure(state=general_state)
         if hasattr(self, 'banner_preview_language_combobox'):
@@ -1152,7 +1037,6 @@ class VideoEditorApp:
                     pass
 
     def on_banner_settings_change(self, event=None):
-        self._store_current_banner_translation()
         if hasattr(self, '_banner_update_job'):
             self.root.after_cancel(self._banner_update_job)
         self._banner_update_job = self.root.after(120, self.update_banner_preview_job)
@@ -1160,14 +1044,9 @@ class VideoEditorApp:
     def update_banner_preview_job(self):
         if not hasattr(self, 'banner_preview'):
             return
-        self._store_current_banner_translation()
         enabled = self.banner_enabled_var.get()
         default_text = self.banner_default_text_var.get().strip()
-        preview_code = self.banner_preview_language_var.get() if hasattr(self, 'banner_preview_language_var') else 'auto'
-        if preview_code and preview_code != 'auto':
-            text_to_show = self.banner_texts.get(preview_code, default_text)
-        else:
-            text_to_show = default_text
+        text_to_show = default_text
         res = self.resolution_var.get() if hasattr(self, 'resolution_var') else "1920x1080"
         video_w, video_h = self._parse_resolution_string(res)
         font_path = self.subtitle_font_file.get() if hasattr(self, 'subtitle_font_file') else ""
@@ -1863,7 +1742,12 @@ class VideoEditorApp:
 
     def select_color(self, variable, callback=None):
         # ... (sem alterações) ...
-        color = tk.colorchooser.askcolor(title="Escolha uma cor", initialcolor=variable.get(), parent=self.root)
+        try:
+            color = colorchooser.askcolor(title="Escolha uma cor", initialcolor=variable.get(), parent=self.root)
+        except Exception as exc:
+            logger.error("Falha ao abrir seletor de cores: %s", exc, exc_info=True)
+            Messagebox.show_error("Não foi possível abrir o seletor de cores.", "Erro", parent=self.root)
+            return
         if color and color[1]:
             variable.set(color[1].upper())
             if callback: callback()
@@ -2045,7 +1929,6 @@ class VideoEditorApp:
         if hold_duration_value <= 0:
             hold_duration_value = 2
         params['intro_hold_duration_seconds'] = hold_duration_value
-        self._store_current_banner_translation()
         banner_default_text = self.banner_default_text_var.get()
         if hasattr(self, 'banner_default_text_widget'):
             banner_state = self.banner_default_text_widget.cget("state")
@@ -2063,7 +1946,7 @@ class VideoEditorApp:
         params['banner_gradient_end'] = self.banner_gradient_end_var.get()
         params['banner_font_color'] = self.banner_font_color_var.get()
         params['banner_duration'] = float(self.banner_duration_var.get())
-        params['banner_texts'] = dict(self.banner_texts)
+        params['banner_texts'] = {}
         logger.debug(f"Parâmetros finais coletados: {json.dumps(params, indent=2, default=str)}")
         return params
 
@@ -2327,7 +2210,6 @@ class VideoEditorApp:
         else:
             intro_default_text = self.intro_default_text_var.get()
 
-        self._store_current_banner_translation()
         if hasattr(self, 'banner_default_text_widget'):
             banner_state = self.banner_default_text_widget.cget("state")
             if banner_state == 'disabled':
@@ -2405,7 +2287,7 @@ class VideoEditorApp:
             'banner_gradient_end': self.banner_gradient_end_var.get(),
             'banner_font_color': self.banner_font_color_var.get(),
             'banner_duration': self.banner_duration_var.get(),
-            'banner_texts': dict(self.banner_texts),
+            'banner_texts': {},
         }
         ConfigManager.save_config(config_to_save)
         logger.info("Configuração guardada.")
