@@ -10,6 +10,7 @@ import sys
 import time
 import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from tkinter import messagebox
 
 import requests
@@ -21,6 +22,7 @@ from ttkbootstrap.constants import *
 # --- NOVO IMPORT ---
 # Importa a função para atualizar o estado da licença
 from security.license_manager import set_license_as_valid
+from security.secrets import LicenseServiceCredentials, SecretLoaderError, load_license_secrets
 
 
 class LicenseTamperedError(Exception):
@@ -42,15 +44,29 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# --- CONFIGURAÇÃO CORRIGIDA (BASEADA NO SCRIPT ANTIGO E FUNCIONAL) ---
-# Usando o PRODUCT_TOKEN que tem as permissões corretas para validar e ativar.
-ACCOUNT_ID = "9798e344-f107-4cfd-bc83-af9b8e75d352" # ID da conta do script antigo
-PRODUCT_TOKEN = "prod-e3d63a2e5b9b825ec166c0bd631be99c5e9cd27761b3f899a3a4014f537e64bdv3" # Token do script antigo
-API_BASE_URL = f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
-# --------------------------------------------------------------------
-
 ICON_FILE = resource_path("icone.ico")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2)
+
+
+@lru_cache(maxsize=1)
+def get_license_service_credentials() -> LicenseServiceCredentials:
+    """Obtém as credenciais do serviço de licenças a partir do canal seguro."""
+
+    try:
+        return load_license_secrets()
+    except SecretLoaderError as exc:
+        raise RuntimeError(
+            "Não foi possível carregar as credenciais do serviço de licenças. "
+            "Certifique-se de que o bundle seguro foi provisionado pelo broker."
+        ) from exc
+
+
+def get_api_base_url() -> str:
+    return get_license_service_credentials().api_base_url
+
+
+def get_product_token() -> str:
+    return get_license_service_credentials().product_token
 
 class CustomLicenseDialog(ttk.Toplevel):
     def __init__(self, parent):
@@ -138,14 +154,18 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
     problema de rede ou quando a resposta não pode ser interpretada.
     """
 
-    headers = {"Authorization": f"Bearer {PRODUCT_TOKEN}", "Accept": "application/vnd.api+json"}
+    product_token = get_product_token()
+    headers = {
+        "Authorization": f"Bearer {product_token}",
+        "Accept": "application/vnd.api+json",
+    }
     params = {"fingerprint": fingerprint}
     if license_key:
         params["key"] = license_key
 
     try:
         response = requests.post(
-            f"{API_BASE_URL}/licenses/{license_id}/actions/validate",
+            f"{get_api_base_url()}/licenses/{license_id}/actions/validate",
             params=params,
             headers=headers,
             timeout=10,
@@ -171,10 +191,18 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
 
 def activate_new_license(license_key, fingerprint):
     """ Ativa uma nova licença usando o fluxo simples e funcional do script antigo. """
-    headers = {"Content-Type": "application/vnd.api+json", "Accept": "application/vnd.api+json"}
+    product_token = get_product_token()
+    headers = {
+        "Content-Type": "application/vnd.api+json",
+        "Accept": "application/vnd.api+json",
+    }
     payload = {"meta": {"key": license_key}}
     try:
-        r = requests.post(f"{API_BASE_URL}/licenses/actions/validate-key", json=payload, headers=headers)
+        r = requests.post(
+            f"{get_api_base_url()}/licenses/actions/validate-key",
+            json=payload,
+            headers=headers,
+        )
         r.raise_for_status()
         validation_data = r.json()
         if not validation_data.get("meta", {}).get("valid"):
@@ -190,9 +218,13 @@ def activate_new_license(license_key, fingerprint):
             "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}}
         }
     }
-    auth_headers = {"Authorization": f"Bearer {PRODUCT_TOKEN}", **headers}
+    auth_headers = {"Authorization": f"Bearer {product_token}", **headers}
     try:
-        r = requests.post(f"{API_BASE_URL}/machines", json=activation_payload, headers=auth_headers)
+        r = requests.post(
+            f"{get_api_base_url()}/machines",
+            json=activation_payload,
+            headers=auth_headers,
+        )
         r.raise_for_status()
         # Retorna os dados da validação original para serem salvos, como no script antigo
         return validation_data, "Ativação bem-sucedida."

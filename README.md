@@ -27,6 +27,13 @@ A activação do Editor Automático é agora completamente offline. Cada licenç
 
 O ficheiro `license.json` continua cifrado com AES-GCM usando uma chave derivada do fingerprint da máquina. Qualquer alteração manual invalida o ficheiro e força nova activação.
 
+> ⚠️ As credenciais do Keygen (account ID e product token) deixaram de ser
+> embutidas no código. O módulo `security.secrets` exige um pacote de segredos
+> entregue por canal autenticado (`KEYGEN_LICENSE_BUNDLE` ou
+> `KEYGEN_LICENSE_BUNDLE_PATH`). Consulte [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md)
+> para instruções sobre como gerar o bundle durante o build e injectá-lo via
+> variáveis de ambiente seguras.
+
 ### Revogação e reemissão
 
 Para remover acessos comprometidos, distribua periodicamente um ficheiro JSON com a chave `revoked` contendo a lista de seriais revogados (por defeito em `security/license_revocations.json`). Também é possível apontar `LICENSE_REVOCATION_URL` para um endpoint HTTPS que devolve o mesmo formato. O `license_checker.py` actualiza e utiliza esta lista durante as verificações periódicas, encerrando a aplicação caso detecte um token revogado.

@@ -1,6 +1,23 @@
 @echo off
 chcp 65001 >nul
 echo =======================
+echo [0/4] Verificando credenciais seguras...
+echo =======================
+if "%KEYGEN_LICENSE_BUNDLE%"=="" (
+    if "%KEYGEN_LICENSE_BUNDLE_PATH%"=="" (
+        if "%KEYGEN_ACCOUNT_ID%"=="" (
+            echo [ERRO] Nenhum ACCOUNT_ID foi fornecido. Consulte docs\keygen_cloud_licensing.md.
+            exit /b 1
+        )
+        if "%KEYGEN_PRODUCT_TOKEN%"=="" (
+            echo [ERRO] Nenhum PRODUCT_TOKEN foi fornecido. Utilize o bundle seguro ou injete a variavel.
+            exit /b 1
+        )
+    )
+)
+echo Os segredos do Keygen foram localizados via canal autenticado.
+
+echo =======================
 echo [1/4] Limpando build antigo...
 echo =======================
 rmdir /s /q build 2>nul
