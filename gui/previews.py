@@ -10,7 +10,12 @@ from PIL import Image, ImageDraw, ImageTk
 
 from .constants import SUBTITLE_POSITIONS
 from .utils import logger
-from video_processing.banner import BannerRenderConfig, BannerRenderResult, generate_banner_image
+from video_processing.banner import (
+    BannerRenderConfig,
+    BannerRenderResult,
+    compute_banner_height,
+    generate_banner_image,
+)
 
 
 class BannerPreview(tk.Canvas):
@@ -207,11 +212,14 @@ class BannerPreview(tk.Canvas):
         if banner_image is not None and banner_image.width > 0 and banner_image.height > 0:
             banner_reference_width = banner_image.width or video_w
             width_scale = frame_width / float(max(1, banner_reference_width))
-            width_scale = max(width_scale, 0.01)
+            width_scale = max(min(width_scale, 1.0), 0.01)
 
-            target_banner_height = frame_height * 0.6
+            banner_ratio = compute_banner_height(video_h) / float(max(1, video_h))
+            target_banner_height = max(1, int(round(frame_height * banner_ratio)))
             height_scale = target_banner_height / float(max(1, banner_image.height))
-            scale = max(width_scale, height_scale)
+            height_scale = max(min(height_scale, 1.0), 0.01)
+            scale = min(width_scale, height_scale)
+            scale = max(scale, 0.01)
 
             banner_size = (
                 max(1, int(round(banner_image.width * scale))),
