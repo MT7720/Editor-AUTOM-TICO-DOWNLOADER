@@ -77,3 +77,31 @@ def test_license_checker_exposes_cached_credentials(monkeypatch):
 
     module.get_license_service_credentials.cache_clear()
     assert module.get_product_token() == "updated-token"
+
+
+def test_validate_license_with_missing_credentials(monkeypatch):
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
+    monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
+
+    module = _reload_license_checker()
+
+    payload, error = module.validate_license_with_id("any", "fingerprint")
+
+    assert payload is None
+    assert "credenciais" in error.lower()
+
+
+def test_activate_new_license_with_missing_credentials(monkeypatch):
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
+    monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
+
+    module = _reload_license_checker()
+
+    activation_data, message = module.activate_new_license("token", "fingerprint")
+
+    assert activation_data is None
+    assert "credenciais" in message.lower()

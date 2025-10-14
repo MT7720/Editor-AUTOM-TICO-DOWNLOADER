@@ -57,7 +57,8 @@ def get_license_service_credentials() -> LicenseServiceCredentials:
     except SecretLoaderError as exc:
         raise RuntimeError(
             "Não foi possível carregar as credenciais do serviço de licenças. "
-            "Certifique-se de que o bundle seguro foi provisionado pelo broker."
+            "Certifique-se de que o bundle seguro foi provisionado pelo broker. "
+            f"Detalhes: {exc}"
         ) from exc
 
 
@@ -154,9 +155,13 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
     problema de rede ou quando a resposta não pode ser interpretada.
     """
 
-    product_token = get_product_token()
+    try:
+        credentials = get_license_service_credentials()
+    except RuntimeError as exc:
+        return None, str(exc)
+
     headers = {
-        "Authorization": f"Bearer {product_token}",
+        "Authorization": f"Bearer {credentials.product_token}",
         "Accept": "application/vnd.api+json",
     }
     params = {"fingerprint": fingerprint}
@@ -165,7 +170,7 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
 
     try:
         response = requests.post(
-            f"{get_api_base_url()}/licenses/{license_id}/actions/validate",
+            f"{credentials.api_base_url}/licenses/{license_id}/actions/validate",
             params=params,
             headers=headers,
             timeout=10,
@@ -191,7 +196,12 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
 
 def activate_new_license(license_key, fingerprint):
     """ Ativa uma nova licença usando o fluxo simples e funcional do script antigo. """
-    product_token = get_product_token()
+    try:
+        credentials = get_license_service_credentials()
+    except RuntimeError as exc:
+        return None, str(exc)
+
+    product_token = credentials.product_token
     headers = {
         "Content-Type": "application/vnd.api+json",
         "Accept": "application/vnd.api+json",
@@ -199,7 +209,7 @@ def activate_new_license(license_key, fingerprint):
     payload = {"meta": {"key": license_key}}
     try:
         r = requests.post(
-            f"{get_api_base_url()}/licenses/actions/validate-key",
+            f"{credentials.api_base_url}/licenses/actions/validate-key",
             json=payload,
             headers=headers,
         )
@@ -221,7 +231,7 @@ def activate_new_license(license_key, fingerprint):
     auth_headers = {"Authorization": f"Bearer {product_token}", **headers}
     try:
         r = requests.post(
-            f"{get_api_base_url()}/machines",
+            f"{credentials.api_base_url}/machines",
             json=activation_payload,
             headers=auth_headers,
         )

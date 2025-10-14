@@ -10,6 +10,12 @@ Para iniciar a interface gráfica, basta executar:
 python main.py
 ```
 
+> ℹ️ Antes de iniciar, certifique-se de que as credenciais do Keygen foram
+> provisionadas por um canal autenticado. Defina `KEYGEN_LICENSE_BUNDLE`,
+> `KEYGEN_LICENSE_BUNDLE_PATH` ou, como último recurso para desenvolvimento,
+> `KEYGEN_ACCOUNT_ID` e `KEYGEN_PRODUCT_TOKEN`. Sem esses valores, o verificador
+> de licença exibirá uma mensagem de erro e encerrará a aplicação.
+
 Durante o desenvolvimento, as verificações de integridade do `security.runtime_guard`
 ficam desativadas para permitir ajustes livres no código-fonte. A validação de hashes
 dos recursos é aplicada apenas nos executáveis empacotados (por exemplo, builds
