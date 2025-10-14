@@ -15,6 +15,12 @@ call venv\Scripts\activate
 pyarmor gen --recursive --output dist/obfuscated_project main.py
 
 echo =======================
+echo [2.5/4] Atualizando manifesto de segurança...
+echo =======================
+python gerar_manifest.py || goto :error
+python tools\sign_runtime_manifest.py --manifest security\runtime_manifest.json --base-dir . || goto :error
+
+echo =======================
 echo [3/4] Copiando módulos adicionais...
 echo =======================
 :: Copia módulos principais
@@ -50,4 +56,9 @@ dist/obfuscated_project/main.py
 echo =======================
 echo ✅ Build concluído!
 echo Executável pronto em dist_final\
+pause
+goto :eof
+
+:error
+echo ❌ Falha ao atualizar o manifesto ou assinar os artefatos. Verifique a variável de ambiente RUNTIME_GUARD_HMAC_KEY.
 pause
