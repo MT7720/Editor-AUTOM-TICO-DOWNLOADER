@@ -79,6 +79,12 @@ def initialize_variables(app: Any, config: Dict[str, Any]) -> None:
         value=config.get("last_download_folder", str(Path.home() / "Downloads"))
     )
     app.download_format_var = ttk.StringVar(value="MP4")
+    app.download_playlist_enabled_var = ttk.BooleanVar(
+        value=config.get("download_playlist_enabled", False)
+    )
+    app.download_playlist_items_var = ttk.StringVar(
+        value=config.get("download_playlist_items", "")
+    )
 
     app.intro_enabled_var = ttk.BooleanVar(value=config.get("intro_enabled", False))
     app.intro_default_text_var = ttk.StringVar(value=config.get("intro_default_text", ""))
