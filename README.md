@@ -17,6 +17,27 @@ gerados com PyInstaller), garantindo que distribuições oficiais mantenham os f
 críticos intactos. O processo de geração da chave de assinatura e a rotação das
 assinaturas do manifesto estão documentados em [`docs/runtime_guard_key_rotation.md`](docs/runtime_guard_key_rotation.md).
 
+## Processo de build seguro
+
+O pipeline de empacotamento exige uma chave HMAC externa para assinar o manifesto de
+integridade. Antes de executar `build_all.bat`, defina a variável de ambiente
+`RUNTIME_GUARD_HMAC_KEY` com a chave codificada em Base64 (armazenada de forma segura,
+fora do repositório). O script de build irá:
+
+1. Regenerar o `security/runtime_manifest.json` com a lista de recursos críticos.
+2. Assinar cada entrada utilizando `tools/sign_runtime_manifest.py`.
+3. Incorporar o manifesto assinado no pacote final.
+
+Caso precise atualizar manualmente o manifesto, execute:
+
+```bash
+python gerar_manifest.py
+python tools/sign_runtime_manifest.py --manifest security/runtime_manifest.json --base-dir .
+```
+
+Ambos os passos requerem a variável `RUNTIME_GUARD_HMAC_KEY` configurada. Se um valor
+inválido for informado, a etapa de build será interrompida com uma mensagem de erro.
+
 ## Monitoramento da licença
 
 A activação do Editor Automático é agora completamente offline. Cada licença é emitida como um token compacto assinado com Ed25519 pela autoridade interna (`security/license_authority.py`). O cliente embute a chave pública correspondente e valida localmente o token, garantindo que:

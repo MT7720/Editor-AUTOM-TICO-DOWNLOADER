@@ -1,5 +1,36 @@
 {
     "algorithm": "sha256",
     "executables": {},
-    "resources": {}
+    "resources": {
+        "ffmpeg_binary": {
+            "hash": "b90225987bdd042cca09a1efb5e34e9848f2d1dbf5fbcd388753a44145522997",
+            "normalize_newlines": false,
+            "path": "ffmpeg/ffmpeg-7.1.1-essentials_build/bin/ffmpeg.exe",
+            "signature": "76ccf6c487a66206ea5fa1f61cd8bd8ccea535f0db0ce26a225523c0e54c593d"
+        },
+        "license_authority_keys": {
+            "hash": "c449e99e8b7ea40abf0676bd1d77b0ebae7c7112d9ec328ceca8908f2867363a",
+            "normalize_newlines": true,
+            "path": "security/license_authority_keys.json",
+            "signature": "ba1fb5cd8cb0fb1c38aece7e17c861932ff639528354fe5a624f621e60b1935e"
+        },
+        "license_secrets": {
+            "hash": "34851a864e79d2ea0d3463937108a26a6abe3fd204bc2e5ee7eb9bde5924b0c3",
+            "normalize_newlines": false,
+            "path": "security/product_token.dat",
+            "signature": "7957e0d02ca08c3aca5a6f28f74a3c0bc1bec7b8efb5f31444a6e81aaf03af0f"
+        },
+        "process_manager": {
+            "hash": "3b69a546d9a7fcdb498d897b6d4a35c1bed851f277372abba6a5f76bcee7aba9",
+            "normalize_newlines": true,
+            "path": "processing/process_manager.py",
+            "signature": "4c5da3b64a5c7ac3c0d197ee5f82b2bd29222deb60c84d24d246905059819938"
+        },
+        "processing_pipeline": {
+            "hash": "aff2cbf784dcbf7c80793018892231221cddf278493178eda3b07d35b18d867f",
+            "normalize_newlines": true,
+            "path": "processing/ffmpeg_pipeline.py",
+            "signature": "1d1fa78db60a9f2022f84ba80c5e693d270fb4fc1ee34f8a6766cafe158c8bb2"
+        }
+    }
 }
