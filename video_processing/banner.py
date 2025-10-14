@@ -41,6 +41,8 @@ class BannerRenderConfig:
     shadow_color: str = "#000000"
     shadow_offset_x: float = 3.0
     shadow_offset_y: float = 3.0
+    height_ratio: float = BANNER_HEIGHT_RATIO
+    font_scale: float = 0.45
 
 
 @dataclass
@@ -59,12 +61,22 @@ class BannerRenderResult:
         return getattr(self.image, item)
 
 
-def compute_banner_height(video_height: int) -> int:
+def compute_banner_height(video_height: int, *, height_ratio: float = BANNER_HEIGHT_RATIO) -> int:
     """Calculate the banner height based on the target video height."""
 
     if video_height <= 0:
         return BANNER_MIN_HEIGHT
-    dynamic_height = int(round(video_height * BANNER_HEIGHT_RATIO))
+
+    try:
+        ratio = float(height_ratio)
+    except (TypeError, ValueError):
+        ratio = BANNER_HEIGHT_RATIO
+
+    if ratio <= 0:
+        ratio = BANNER_HEIGHT_RATIO
+
+    ratio = max(0.05, min(ratio, 0.9))
+    dynamic_height = int(round(video_height * ratio))
     return max(BANNER_MIN_HEIGHT, dynamic_height)
 
 
@@ -124,6 +136,24 @@ def _coerce_int(
     return result
 
 
+def _coerce_float(
+    value: Any,
+    *,
+    default: float = 0.0,
+    minimum: Optional[float] = None,
+    maximum: Optional[float] = None,
+) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        result = default
+    if minimum is not None and result < minimum:
+        result = minimum
+    if maximum is not None and result > maximum:
+        result = maximum
+    return result
+
+
 def _wrap_text(text: str, draw: ImageDraw.ImageDraw, font: ImageFont.ImageFont, max_width: float) -> List[str]:
     text = text.replace("\r", "").strip()
     if not text:
@@ -166,7 +196,13 @@ def _draw_gradient(width: int, height: int, start: Tuple[int, int, int], end: Tu
 def generate_banner_image(config: BannerRenderConfig) -> BannerRenderResult:
     """Render an RGBA banner image according to ``config`` and return metadata."""
 
-    banner_height = compute_banner_height(config.video_height)
+    height_ratio = _coerce_float(
+        config.height_ratio,
+        default=BANNER_HEIGHT_RATIO,
+        minimum=0.05,
+        maximum=0.9,
+    )
+    banner_height = compute_banner_height(config.video_height, height_ratio=height_ratio)
     width = max(1, int(config.video_width))
     banner = Image.new("RGBA", (width, banner_height), (0, 0, 0, 0))
 
@@ -193,8 +229,12 @@ def generate_banner_image(config: BannerRenderConfig) -> BannerRenderResult:
     shadow_enabled = bool(config.shadow_enabled and (shadow_dx or shadow_dy))
 
     max_text_width = width * 0.9
-    target_font_size = max(18, int(round(banner_height * 0.45)))
-    min_font_size = max(MIN_FONT_SIZE, int(round(banner_height * 0.2)))
+    font_scale = _coerce_float(config.font_scale, default=0.45, minimum=0.05, maximum=2.0)
+    target_font_size = max(18, int(round(banner_height * font_scale)))
+    min_font_scale = max(0.1, min(font_scale * 0.5, font_scale))
+    min_font_size = max(MIN_FONT_SIZE, int(round(banner_height * min_font_scale)))
+    if min_font_size > target_font_size:
+        min_font_size = target_font_size
 
     resolved_lines: List[str] = []
     line_heights: List[int] = []

@@ -90,6 +90,8 @@ class ConfigManager:
             "banner_gradient_end": "#DD2476",
             "banner_font_color": "#FFFFFF",
             "banner_duration": 5.0,
+            "banner_height_ratio": 0.18,
+            "banner_font_scale": 0.45,
             "banner_outline_enabled": False,
             "banner_outline_color": "#000000",
             "banner_outline_offset": 2.0,

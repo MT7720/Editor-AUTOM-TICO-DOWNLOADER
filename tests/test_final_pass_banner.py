@@ -40,6 +40,8 @@ def test_banner_overlay_creates_gradient_and_filter(tmp_path, monkeypatch):
         'banner_shadow_offset_x': 4.0,
         'banner_shadow_offset_y': 3.0,
         'banner_duration': 3.5,
+        'banner_height_ratio': 0.25,
+        'banner_font_scale': 0.6,
         'current_language_code': 'es',
     }
 
@@ -84,7 +86,7 @@ def test_banner_overlay_creates_gradient_and_filter(tmp_path, monkeypatch):
     assert params['banner_final_text'] == 'Hola mundo'
 
     with Image.open(overlay_path) as img:
-        expected_height = compute_banner_height(720)
+        expected_height = compute_banner_height(720, height_ratio=0.25)
         assert img.size == (1280, expected_height)
         top_pixel = img.getpixel((img.width // 2, 0))[:3]
         bottom_pixel = img.getpixel((img.width // 2, img.height - 1))[:3]
@@ -101,6 +103,7 @@ def test_banner_overlay_creates_gradient_and_filter(tmp_path, monkeypatch):
     assert "overlay=0:0:enable='between(t,0,3.500)'" in filter_str
     assert '-loop' in cmd
     assert params['banner_overlay_duration'] == 3.5
+    assert params['banner_overlay_height'] == expected_height
 
 
 def test_generate_banner_image_outline_shadow():

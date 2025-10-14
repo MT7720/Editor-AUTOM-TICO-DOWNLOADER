@@ -866,6 +866,31 @@ class VideoEditorApp:
         )
         control_row += 1
 
+        self.banner_height_ratio_frame = self._create_slider_control(
+            controls_frame,
+            control_row,
+            "Altura da faixa:",
+            self.banner_height_ratio_var,
+            0.05,
+            0.40,
+            "%.0f%%",
+            self.on_banner_settings_change,
+            display_transform=lambda v: v * 100,
+        )
+        control_row += 1
+
+        self.banner_font_scale_frame = self._create_slider_control(
+            controls_frame,
+            control_row,
+            "Escala do texto:",
+            self.banner_font_scale_var,
+            0.20,
+            1.20,
+            "%.2fx",
+            self.on_banner_settings_change,
+        )
+        control_row += 1
+
         colors_frame = ttk.LabelFrame(controls_frame, text=" Cores da Faixa ", padding=10)
         colors_frame.grid(row=control_row, column=0, sticky="ew", pady=(10, 0))
         colors_frame.columnconfigure(1, weight=1)
@@ -1061,8 +1086,15 @@ class VideoEditorApp:
         general_state = NORMAL if enabled else DISABLED
         if hasattr(self, 'banner_language_combobox'):
             self.banner_language_combobox.configure(state=combo_state)
-        if hasattr(self, 'banner_duration_frame'):
-            for child in self.banner_duration_frame.winfo_children():
+        for frame_attr in (
+            'banner_duration_frame',
+            'banner_height_ratio_frame',
+            'banner_font_scale_frame',
+        ):
+            frame = getattr(self, frame_attr, None)
+            if frame is None:
+                continue
+            for child in frame.winfo_children():
                 try:
                     child.configure(state=general_state)
                 except Exception:
@@ -1204,6 +1236,8 @@ class VideoEditorApp:
                 font_color=self.banner_font_color_var.get(),
                 enabled=enabled,
                 video_resolution=(video_w, video_h),
+                height_ratio=self.banner_height_ratio_var.get(),
+                font_scale=self.banner_font_scale_var.get(),
                 font_path=font_path or None,
                 outline_enabled=self.banner_outline_enabled_var.get(),
                 outline_color=self.banner_outline_color_var.get(),
@@ -1576,11 +1610,22 @@ class VideoEditorApp:
         self.downloader_engine_status_label.pack(anchor='w', pady=(5,0))
 
     # ... (O restante da classe, como os métodos de lógica, permanecem os mesmos) ...
-    def _create_slider_control(self, parent, row, label_text, var, from_, to, format_str, command):
+    def _create_slider_control(
+        self,
+        parent,
+        row,
+        label_text,
+        var,
+        from_,
+        to,
+        format_str,
+        command,
+        display_transform=None,
+    ):
         frame = ttk.Frame(parent)
         frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(10, 5))
         frame.columnconfigure(1, weight=1)
-        
+
         ttk.Label(frame, text=label_text, width=15, anchor='w').grid(row=0, column=0, sticky="w", padx=(0, 10))
         
         slider_frame = ttk.Frame(frame)
@@ -1592,7 +1637,8 @@ class VideoEditorApp:
         def update_display(v):
             val = float(v)
             var.set(val)
-            display_var.set(format_str % val)
+            display_value = display_transform(val) if display_transform else val
+            display_var.set(format_str % display_value)
             if command:
                 command()
 
@@ -2155,6 +2201,8 @@ class VideoEditorApp:
         params['banner_gradient_start'] = self.banner_gradient_start_var.get()
         params['banner_gradient_end'] = self.banner_gradient_end_var.get()
         params['banner_font_color'] = self.banner_font_color_var.get()
+        params['banner_height_ratio'] = float(self.banner_height_ratio_var.get())
+        params['banner_font_scale'] = float(self.banner_font_scale_var.get())
         params['banner_outline_enabled'] = self.banner_outline_enabled_var.get()
         params['banner_outline_color'] = self.banner_outline_color_var.get()
         params['banner_outline_offset'] = float(self.banner_outline_offset_var.get())
@@ -2503,6 +2551,8 @@ class VideoEditorApp:
             'banner_gradient_start': self.banner_gradient_start_var.get(),
             'banner_gradient_end': self.banner_gradient_end_var.get(),
             'banner_font_color': self.banner_font_color_var.get(),
+            'banner_height_ratio': self.banner_height_ratio_var.get(),
+            'banner_font_scale': self.banner_font_scale_var.get(),
             'banner_outline_enabled': self.banner_outline_enabled_var.get(),
             'banner_outline_color': self.banner_outline_color_var.get(),
             'banner_outline_offset': self.banner_outline_offset_var.get(),
