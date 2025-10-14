@@ -238,6 +238,7 @@ class VideoEditorApp:
 
         self._create_files_tab()
         self._create_video_tab()
+        self._create_banner_tab()
         self._create_audio_tab()
         self._create_intro_tab()
         self._create_effects_tab()
@@ -547,7 +548,6 @@ class VideoEditorApp:
         tab = ttk.Frame(self.notebook, padding=(20, 15))
         self.notebook.add(tab, text=" Editor: Vídeo ")
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(1, weight=1)
 
         self.video_settings_section = ttk.LabelFrame(tab, text=" Configurações Gerais de Vídeo ", padding=15)
         self.video_settings_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
@@ -558,10 +558,8 @@ class VideoEditorApp:
         self.video_codec_combobox = ttk.Combobox(self.video_settings_section, textvariable=self.video_codec_var, state="readonly")
         self.video_codec_combobox.grid(row=1, column=1, sticky="ew")
 
-        self._create_banner_section(tab, row=1)
-
         self.slideshow_section = ttk.LabelFrame(tab, text=" Configurações de Slideshow ", padding=15)
-        self.slideshow_section.grid(row=2, column=0, sticky="ew")
+        self.slideshow_section.grid(row=1, column=0, sticky="ew")
         self.slideshow_section.columnconfigure(1, weight=1)
         
         ttk.Label(self.slideshow_section, text="Duração por Imagem (s):").grid(row=0, column=0, sticky="w", padx=(0,10), pady=5)
@@ -581,7 +579,7 @@ class VideoEditorApp:
         ttk.Combobox(self.slideshow_section, textvariable=self.motion_var, values=SLIDESHOW_MOTIONS, state="readonly").grid(row=3, column=1, sticky="ew")
 
         fade_out_section = ttk.LabelFrame(tab, text=" Encerramento (Fade Out) ", padding=15)
-        fade_out_section.grid(row=3, column=0, sticky="ew", pady=(20, 0))
+        fade_out_section.grid(row=2, column=0, sticky="ew", pady=(20, 0))
         fade_out_section.columnconfigure(1, weight=1)
 
         cb = ttk.Checkbutton(
@@ -607,6 +605,12 @@ class VideoEditorApp:
             command=lambda v: self.fade_out_duration_var.set(int(float(v)))
         ).grid(row=0, column=0, sticky="ew", padx=(0, 10))
         ttk.Label(fade_duration_frame, textvariable=self.fade_out_duration_var, width=3).grid(row=0, column=1)
+
+    def _create_banner_tab(self):
+        tab = ttk.Frame(self.notebook, padding=(20, 15))
+        self.notebook.add(tab, text=" Editor: Faixa ")
+        tab.columnconfigure(0, weight=1)
+        self._create_banner_section(tab, row=0)
 
     def _create_audio_tab(self):
         # ... (sem alterações) ...
