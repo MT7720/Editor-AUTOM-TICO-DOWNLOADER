@@ -393,16 +393,9 @@ def get_machine_fingerprint():
     return hashlib.sha256(identifier.encode()).hexdigest()
 
 def _looks_like_legacy_key(license_key: str) -> bool:
-    if "." in license_key:
-        return True
-    normalized = license_key.replace("-", "").replace(" ", "")
-    if not normalized:
-        return False
-    if not normalized.isalnum():
-        return False
-    # Formato típico dos tokens antigos: 4 blocos de 4 caracteres.
-    legacy_pattern = re.compile(r"^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3,}$")
-    return bool(legacy_pattern.match(license_key.upper()))
+    """Detecta tokens legados emitidos pelo fluxo offline anterior."""
+
+    return "." in license_key
 
 
 def validate_license_key(
