@@ -30,7 +30,7 @@ def license_app(monkeypatch):
     app = VideoEditorApp.__new__(VideoEditorApp)
     root = DummyRoot()
     app.root = root
-    app._license_id = "test-id"
+    app._license_key = "stored-key"
     app._license_fingerprint = "fingerprint"
     app._license_check_job = None
     app._license_check_failures = 0
@@ -44,13 +44,12 @@ def license_app(monkeypatch):
 def test_periodic_license_validation_success(monkeypatch, license_app):
     app, after_calls = license_app
 
-    def fake_validate(license_id, fingerprint, license_key):
-        assert license_id == "test-id"
+    def fake_validate(license_key, fingerprint):
         assert fingerprint == "fingerprint"
         assert license_key == "stored-key"
         return {"meta": {"valid": True}}, None, None
 
-    monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
+    monkeypatch.setattr(license_checker, "validate_license_key", fake_validate)
 
     app._run_license_check()
 
@@ -65,7 +64,7 @@ def test_license_validation_network_backoff(monkeypatch, license_app):
 
     monkeypatch.setattr(
         license_checker,
-        "validate_license_with_id",
+        "validate_license_key",
         lambda *args, **kwargs: (None, "network-error", None),
     )
 
@@ -86,7 +85,7 @@ def test_license_validation_invalid_triggers_exit(monkeypatch, license_app):
 
     monkeypatch.setattr(
         license_checker,
-        "validate_license_with_id",
+        "validate_license_key",
         lambda *args, **kwargs: ({"meta": {"valid": False, "detail": "Expirada"}}, None, None),
     )
 
@@ -119,12 +118,13 @@ def test_license_validation_authentication_failure(monkeypatch, license_app):
     app, after_calls = license_app
     after_calls.clear()
     app.license_data = None
+    app._license_key = None
 
-    def fake_validate(license_id, fingerprint, license_key):
+    def fake_validate(license_key, fingerprint):
         assert license_key is None
         return None, "auth-error", None
 
-    monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
+    monkeypatch.setattr(license_checker, "validate_license_key", fake_validate)
 
     app._run_license_check()
 

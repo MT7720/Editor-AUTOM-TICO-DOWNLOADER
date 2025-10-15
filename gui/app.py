@@ -113,7 +113,7 @@ class VideoEditorApp:
                     "Os dados de licença guardados foram adulterados e precisarão de reativação.",
                 )
                 self.license_data = None
-        self._license_id = self._extract_license_id(self.license_data)
+        self._license_key = license_checker.extract_license_key(self.license_data)
         self._license_fingerprint = None
         self._license_check_job = None
         self._license_check_failures = 0
@@ -139,17 +139,12 @@ class VideoEditorApp:
 
         logger.info("Configuração da UI concluída.")
 
-    def _extract_license_id(self, data: Optional[dict]) -> Optional[str]:
-        if not data:
-            return None
-        try:
-            return data.get("data", {}).get("id")
-        except AttributeError:
-            return None
+    def _refresh_cached_license_key(self) -> None:
+        self._license_key = license_checker.extract_license_key(self.license_data)
 
     def _initialize_license_monitoring(self) -> None:
-        if not self._license_id:
-            logger.debug("Nenhuma licença carregada; monitoramento contínuo desativado.")
+        if not self._license_key:
+            logger.debug("Nenhuma chave de licença carregada; monitoramento contínuo desativado.")
             return
         try:
             self._license_fingerprint = license_checker.get_machine_fingerprint()
@@ -189,23 +184,26 @@ class VideoEditorApp:
 
     def _run_license_check(self) -> None:
         self._license_check_job = None
-        if not self._license_id or self._license_termination_initiated:
+        if self._license_termination_initiated:
             return
         fingerprint = self._license_fingerprint or license_checker.get_machine_fingerprint()
-        license_key = None
-        if isinstance(self.license_data, dict):
-            license_key = self.license_data.get("meta", {}).get("key")
+        license_key = self._license_key
+        if license_key is None:
+            license_key = license_checker.extract_license_key(self.license_data)
 
         payload = None
         error = None
         invalid_detail = None
         try:
-            payload, error, invalid_detail = license_checker.validate_license_with_id(
-                self._license_id, fingerprint, license_key
+            payload, error, invalid_detail = license_checker.validate_license_key(
+                license_key, fingerprint
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Erro inesperado ao contactar o servidor de licenças.", exc_info=exc)
             error = str(exc)
+
+        if invalid_detail == "migration_required":
+            invalid_detail = license_checker.MIGRATION_REQUIRED_MESSAGE
 
         if invalid_detail:
             logger.error("Licença inválida detectada: %s", invalid_detail)
@@ -228,6 +226,9 @@ class VideoEditorApp:
             if self._license_check_failures:
                 logger.info("Conectividade restabelecida. Licença validada novamente com o servidor.")
             self._license_check_failures = 0
+            self.license_data = payload
+            self._refresh_cached_license_key()
+            self.update_license_status_display(payload)
             self._schedule_license_check()
             return
 
