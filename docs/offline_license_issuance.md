@@ -32,7 +32,9 @@ transição para o fluxo descrito em
    que o novo diálogo de licenciamento (`CustomLicenseDialog`) substitui os
    antigos fluxos com bundles locais.
 3. Disponibilize novas chaves/licenças no painel do Keygen e comunique o
-   processo de recolha da chave no diálogo.
+   processo de recolha da chave no diálogo. Builds sem credenciais deixam de ser
+   produzidos, garantindo que apenas instaladores oficiais (que injectam o
+   bundle automaticamente) chegam aos clientes.
 
 ## 4. Limpar artefactos obsoletos
 

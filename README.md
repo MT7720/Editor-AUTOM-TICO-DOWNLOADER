@@ -18,7 +18,8 @@ python main.py
 > campos `license_account_id` e `license_product_token` de
 > `video_editor_config.json` ou distribuir o ficheiro
 > `resources/license_credentials.json`. Sem esses valores, a activação não
-> conseguirá contactar a API do Keygen.
+> conseguirá contactar a API do Keygen e o processo de build falhará
+> imediatamente.
 
 Durante o desenvolvimento, as verificações de integridade do `security.runtime_guard`
 ficam desativadas para permitir ajustes livres no código-fonte. A validação de hashes
@@ -82,7 +83,11 @@ O módulo `security.secrets` procura as credenciais do Keygen nesta ordem:
    `license_api_base_url` em `video_editor_config.json`.
 
 Escolha uma das alternativas acima para que o cliente consiga contactar o Keygen
-sem intervenção manual. O guia
+sem intervenção manual. Os instaladores oficiais gerados pelo pipeline de CI/CD
+recebem o bundle assinado automaticamente (via `KEYGEN_LICENSE_BUNDLE`), de modo
+que o utilizador final continue a introduzir apenas a sua chave de licença. Caso
+o bundle esteja ausente, `security.secrets` interrompe o build com uma mensagem
+explícita para evitar executáveis sem credenciais. O guia
 [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md) explica como
 gerar o bundle, distribuir os segredos e automatizar o abastecimento durante o
 build.

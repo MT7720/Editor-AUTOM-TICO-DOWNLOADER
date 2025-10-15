@@ -4,8 +4,8 @@ Este módulo deixa de utilizar a ofuscação com XOR e passa a depender de um
 canal autenticado (por exemplo, o *token broker* interno ou o sistema de CI)
 para entregar os segredos em tempo de execução. Os valores podem ser
 fornecidos via `KEYGEN_LICENSE_BUNDLE` (JSON codificado em Base64), via ficheiro
-referenciado por `KEYGEN_LICENSE_BUNDLE_PATH` ou, como *fallback*, através de
-variáveis de ambiente individuais.
+referenciado por `KEYGEN_LICENSE_BUNDLE_PATH` ou através de variáveis de
+ambiente individuais.
 
 Para produzir o bundle assinado, utilize o serviço interno responsável pela
 gestão das credenciais. O bundle deve incluir pelo menos os campos
@@ -26,13 +26,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
-
-DEFAULT_LICENSE_CREDENTIALS: Dict[str, str] = {
-    "account_id": "9798e344-f107-4cfd-bc83-af9b8e75d352",
-    "product_token": "prod-e3d63a2e5b9b825ec166c0bd631be99c5e9cd27761b3f899a3a4014f537e64bdv3",
-    "api_base_url": "https://api.keygen.sh/v1/accounts/9798e344-f107-4cfd-bc83-af9b8e75d352",
-    "channel": "embedded",
-}
 
 __all__ = [
     "LicenseServiceCredentials",
@@ -89,14 +82,14 @@ def load_license_secrets() -> LicenseServiceCredentials:
         or _load_bundle_from_local_installation()
     )
 
-    use_embedded_defaults = False
-
     if not payload:
-        payload = dict(DEFAULT_LICENSE_CREDENTIALS)
-        use_embedded_defaults = True
+        raise SecretLoaderError(
+            "As credenciais do serviço de licenças não foram provisionadas. "
+            "Configure KEYGEN_LICENSE_BUNDLE, KEYGEN_LICENSE_BUNDLE_PATH ou as "
+            "variáveis KEYGEN_ACCOUNT_ID/KEYGEN_PRODUCT_TOKEN."
+        )
 
-    if not use_embedded_defaults:
-        _ensure_payload_is_authenticated(payload)
+    _ensure_payload_is_authenticated(payload)
 
     return LicenseServiceCredentials.from_payload(payload)
 
