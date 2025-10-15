@@ -66,7 +66,7 @@ pyinstaller ^
 --hidden-import tkinter.messagebox ^
 --add-data "ffmpeg;ffmpeg" ^
 --add-data "security/runtime_manifest.json;security" ^
---add-data "security/license_authority_keys.json;security" ^
+--add-data "security/license_authority_public_key.json;security" ^
 --add-data "dist/obfuscated_project/pyarmor_runtime_000000;pyarmor_runtime_000000" ^
 dist/obfuscated_project/main.py
 

@@ -1,7 +1,10 @@
 # Emissão Offline de Licenças (Descontinuada)
 
 A partir da migração para activação exclusivamente online, o Editor Automático
-já não aceita tokens Ed25519 emitidos localmente. Este documento explica como
+já não aceita tokens Ed25519 emitidos localmente. A geração de novos tokens
+ocorre apenas em infraestrutura controlada onde a chave privada fica protegida;
+os clientes mantêm apenas a chave pública embutida para validar assinaturas.
+Este documento explica como
 identificar instalações antigas, revogar os tokens herdados e preparar a
 transição para o fluxo descrito em
 [`docs/keygen_cloud_licensing.md`](docs/keygen_cloud_licensing.md).
@@ -38,8 +41,10 @@ transição para o fluxo descrito em
 
 ## 4. Limpar artefactos obsoletos
 
-- Remova `security/license_authority_keys.json` e quaisquer cópias locais da
-  chave privada de emissão.
+- Remova cópias antigas como `security/license_authority_keys.json` e quaisquer
+  ficheiros que contenham a chave privada de emissão. Apenas
+  `security/license_authority_public_key.json` deve permanecer nos artefactos
+  distribuídos.
 - Apague scripts personalizados que geravam tokens offline.
 - Certifique-se de que `resources/license_credentials.json` contém apenas as
   credenciais oficiais do Keygen ou que os campos do `video_editor_config.json`

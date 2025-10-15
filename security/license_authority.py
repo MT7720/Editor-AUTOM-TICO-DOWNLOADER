@@ -3,9 +3,10 @@
 This module centralises the logic required to mint compact license tokens that
 can be validated by :mod:`license_checker` without having to contact external
 services.  The implementation relies on an Ed25519 key pair stored alongside the
-application assets.  The private key should only live on trusted build or
-operations machines whereas the public key is embedded in the client so it can
-verify signatures offline.
+application assets.  The private key must be injected at runtime (for example
+via the :envvar:`LICENSE_AUTHORITY_KEY_FILE` environment variable) so that
+production builds never embed signing secrets.  Only the public key remains
+packaged with the client for offline verification.
 
 The module also exposes a small CLI that can be used to issue multiple licenses
 from a CSV file.  Example usage::
@@ -35,13 +36,14 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 __all__ = [
     "LicenseClaims",
     "LicenseAuthority",
+    "LicenseKeyError",
     "issue_license_token",
     "load_private_key",
     "load_public_key",
 ]
 
 _KEY_FILE_ENV_VAR = "LICENSE_AUTHORITY_KEY_FILE"
-_DEFAULT_KEY_FILE = Path(__file__).with_name("license_authority_keys.json")
+_PUBLIC_KEY_FILE = Path(__file__).with_name("license_authority_public_key.json")
 
 
 class LicenseKeyError(RuntimeError):
@@ -72,24 +74,58 @@ class LicenseClaims:
         }
 
 
-def _read_key_material() -> Dict[str, str]:
-    key_file = Path(os.getenv(_KEY_FILE_ENV_VAR, str(_DEFAULT_KEY_FILE)))
-    if not key_file.exists():
-        raise LicenseKeyError(f"Ficheiro de chaves não encontrado em {key_file!s}.")
+def _load_json(path: Path, missing_message: str) -> Dict[str, str]:
     try:
-        with key_file.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
+    except FileNotFoundError as exc:
+        raise LicenseKeyError(missing_message) from exc
     except (OSError, json.JSONDecodeError) as exc:  # pragma: no cover - defensive
-        raise LicenseKeyError("Não foi possível ler o ficheiro de chaves da autoridade de licenças.") from exc
-    if "private_key" not in data or "public_key" not in data:
+        raise LicenseKeyError(
+            "Não foi possível ler o ficheiro de chaves da autoridade de licenças."
+        ) from exc
+    if not isinstance(data, dict):
         raise LicenseKeyError("Formato inválido do ficheiro de chaves da autoridade de licenças.")
     return data
 
 
-def load_private_key() -> ed25519.Ed25519PrivateKey:
+def _resolve_private_key_path(explicit_path: Path | None) -> Path:
+    if explicit_path is not None:
+        return explicit_path
+    env_value = os.getenv(_KEY_FILE_ENV_VAR)
+    if not env_value:
+        raise LicenseKeyError(
+            "Defina LICENSE_AUTHORITY_KEY_FILE com o caminho para a chave privada da autoridade."
+        )
+    return Path(env_value)
+
+
+def _read_private_key_material(key_file: Path | None = None) -> Dict[str, str]:
+    key_path = _resolve_private_key_path(key_file)
+    data = _load_json(
+        key_path,
+        f"Ficheiro de chaves não encontrado em {key_path!s}.",
+    )
+    if "private_key" not in data:
+        raise LicenseKeyError("Formato inválido do ficheiro de chaves da autoridade de licenças.")
+    return data
+
+
+def _read_public_key_material() -> Dict[str, str]:
+    data = _load_json(
+        _PUBLIC_KEY_FILE,
+        f"Chave pública não encontrada em {_PUBLIC_KEY_FILE!s}.",
+    )
+    if "public_key" not in data:
+        raise LicenseKeyError("Formato inválido do ficheiro de chave pública da autoridade de licenças.")
+    return data
+
+
+def load_private_key(key_file: os.PathLike[str] | str | None = None) -> ed25519.Ed25519PrivateKey:
     """Return the Ed25519 private key configured for signing."""
 
-    data = _read_key_material()
+    path = Path(key_file) if key_file is not None else None
+    data = _read_private_key_material(path)
     private_bytes = base64.b64decode(data["private_key"])
     return ed25519.Ed25519PrivateKey.from_private_bytes(private_bytes)
 
@@ -97,7 +133,7 @@ def load_private_key() -> ed25519.Ed25519PrivateKey:
 def load_public_key() -> ed25519.Ed25519PublicKey:
     """Return the Ed25519 public key for signature verification."""
 
-    data = _read_key_material()
+    data = _read_public_key_material()
     public_bytes = base64.b64decode(data["public_key"])
     return ed25519.Ed25519PublicKey.from_public_bytes(public_bytes)
 
@@ -105,8 +141,12 @@ def load_public_key() -> ed25519.Ed25519PublicKey:
 class LicenseAuthority:
     """Small helper that signs :class:`LicenseClaims` into compact tokens."""
 
-    def __init__(self, private_key: Optional[ed25519.Ed25519PrivateKey] = None):
-        self._private_key = private_key or load_private_key()
+    def __init__(
+        self,
+        private_key: Optional[ed25519.Ed25519PrivateKey] = None,
+        key_file: os.PathLike[str] | str | None = None,
+    ):
+        self._private_key = private_key or load_private_key(key_file)
 
     def sign(self, claims: LicenseClaims) -> str:
         payload = json.dumps(claims.to_json_payload(), separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -129,12 +169,13 @@ def issue_license_token(
     issued_at: Optional[datetime] = None,
     product: str = "editor-automatico",
     authority: Optional[LicenseAuthority] = None,
+    key_file: os.PathLike[str] | str | None = None,
 ) -> str:
     """Return a signed compact token for the provided license attributes."""
 
     serial = serial or secrets.token_hex(8)
     issued_at = issued_at or datetime.now(timezone.utc)
-    authority = authority or LicenseAuthority()
+    authority = authority or LicenseAuthority(key_file=key_file)
     claims = LicenseClaims(
         customer_id=customer_id,
         fingerprint=fingerprint,

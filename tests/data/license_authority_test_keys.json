@@ -1,0 +1,8 @@
+{
+  "private_key": "eOsabVxiV/Kt2ubbo8negnyhgApbwCI75OKazxwcN98=",
+  "public_key": "haWPEug8uQqyhqqsxn5JQdMiQezwL0jwwgKxJ0Fu8+o=",
+  "metadata": {
+    "environment": "tests",
+    "documentation": "Fixtures apenas para cenários automatizados. Não distribuir."
+  }
+}

@@ -18,10 +18,10 @@ RESOURCES_TO_PROTECT: Dict[str, Dict[str, object]] = {
         "normalize_newlines": False,
         "description": "Binário principal utilizado para processamento de mídia.",
     },
-    "license_authority_keys": {
-        "path": "security/license_authority_keys.json",
+    "license_authority_public_key": {
+        "path": "security/license_authority_public_key.json",
         "normalize_newlines": True,
-        "description": "Chaves públicas utilizadas para validar licenças emitidas.",
+        "description": "Material público utilizado para validar licenças emitidas.",
     },
     "processing_pipeline": {
         "path": "processing/ffmpeg_pipeline.py",
