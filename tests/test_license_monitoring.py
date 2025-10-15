@@ -2,7 +2,6 @@ import pytest
 
 import license_checker
 from gui.app import VideoEditorApp
-from ttkbootstrap.dialogs import Messagebox
 
 
 class DummyRoot:
@@ -91,13 +90,12 @@ def test_license_validation_invalid_triggers_exit(monkeypatch, license_app):
         lambda *args, **kwargs: ({"meta": {"valid": False, "detail": "Expirada"}}, None, None),
     )
 
-    warnings = {}
+    dialog = {}
 
-    def fake_warning(message, title, parent=None):
-        warnings["message"] = message
-        warnings["title"] = title
+    def fake_dialog(message):
+        dialog["message"] = message
 
-    monkeypatch.setattr(Messagebox, "show_warning", fake_warning)
+    app._show_invalid_license_dialog = fake_dialog  # type: ignore[assignment]
 
     destroyed = {"called": False}
 
@@ -110,8 +108,10 @@ def test_license_validation_invalid_triggers_exit(monkeypatch, license_app):
         app._run_license_check()
 
     assert exc.value.code == 1
-    assert warnings["message"] == "Expirada"
-    assert warnings["title"] == "Licença inválida"
+    assert (
+        dialog["message"]
+        == "Não foi possível validar sua licença. Verifique a chave ou contacte o suporte."
+    )
     assert destroyed["called"] is True
 
 
