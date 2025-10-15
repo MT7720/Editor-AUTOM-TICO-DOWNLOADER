@@ -45,7 +45,21 @@ Escolha um único método e garanta que os ficheiros sejam protegidos durante a
 transmissão e o armazenamento. Após o build, remova quaisquer credenciais
 temporárias das máquinas de compilação.
 
-## 3. Automatizar builds e distribuição
+## 3. Autoridade de licenças e chaves
+
+- A emissão de tokens Ed25519 acontece exclusivamente em infraestrutura
+  controlada (servidores de build ou pipelines internos). A chave privada nunca
+  é adicionada ao repositório nem copiada para estações de desenvolvimento.
+- Os pipelines devem injectar o caminho para a chave através da variável
+  ``LICENSE_AUTHORITY_KEY_FILE`` ao executar ``security.license_authority`` ou
+  ``tools/keygen_license_cli.py issue-token``. Fora destes ambientes a chave não
+  é carregada e a emissão falha por segurança.
+- O cliente distribui apenas ``security/license_authority_public_key.json``, que
+  contém a chave pública embutida e suficiente para validar assinaturas. As
+  operações de activação continuam a depender do Keygen; os tokens offline
+  servem apenas para compatibilidade com instalações antigas.
+
+## 4. Automatizar builds e distribuição
 
 Antes de executar `build_all.bat`, injete as credenciais através de uma das
 opções anteriores. O script aborta caso nenhum segredo seja encontrado.
@@ -53,7 +67,7 @@ Distribuições oficiais devem incluir apenas os ficheiros empacotados
 necessários (`resources/license_credentials.json`, se for o caso); evite copiar
 credenciais adicionais para o instalador.
 
-## 4. Activação no cliente
+## 5. Activação no cliente
 
 Ao iniciar, o `license_checker.py` tenta reutilizar a activação guardada em
 `license.json` e revalida-la junto ao Keygen. Caso não haja licença válida, o
@@ -66,7 +80,7 @@ O ficheiro `license.json` permanece cifrado com AES-GCM a partir do fingerprint
 local. Alterações manuais invalidam o conteúdo e desencadeiam uma nova activação
 online.
 
-## 5. Revogações e manutenção
+## 6. Revogações e manutenção
 
 Actualize periodicamente `security/license_revocations.json` ou configure o
 endpoint indicado por `LICENSE_REVOCATION_URL`. Ao detectar um serial revogado,
@@ -74,7 +88,7 @@ a aplicação encerra e solicita nova activação. Utilize as ferramentas em
 `tools/keygen_license_cli.py` para consultar políticas, criar licenças e gerir
 máquinas activadas.
 
-## 6. Migração de instalações antigas
+## 7. Migração de instalações antigas
 
 Ambientes que ainda utilizam tokens Ed25519 emitidos offline devem seguir o
 roteiro de [`docs/offline_license_issuance.md`](docs/offline_license_issuance.md)

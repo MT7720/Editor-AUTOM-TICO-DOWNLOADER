@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, Optional
 
 import requests
 
-from security.license_authority import issue_license_token
+from security.license_authority import LicenseAuthority, LicenseKeyError, issue_license_token
 
 DEFAULT_ACCOUNT_ID = "9798e344-f107-4cfd-bcd3-af9b8e75d352"
 DEFAULT_BASE_URL_TEMPLATE = "https://api.keygen.sh/v1/accounts/{account_id}"
@@ -196,12 +196,18 @@ def _handle_issue_token(args: argparse.Namespace, client: KeygenClient) -> None:
     if seats is None:
         seats = 1
 
+    authority = None
+    if args.authority_key_file:
+        authority = LicenseAuthority(key_file=args.authority_key_file)
+
     token = issue_license_token(
         customer_id=license_data.get("id", ""),
         fingerprint=args.fingerprint,
         expiry=expiry_dt,
         seats=int(seats),
         serial=args.serial,
+        authority=authority,
+        key_file=args.authority_key_file,
     )
 
     payload = {
@@ -235,6 +241,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--base-url",
         default=os.getenv("KEYGEN_API_BASE_URL"),
         help="URL base da API do Keygen (opcional)",
+    )
+    parser.add_argument(
+        "--authority-key-file",
+        default=os.getenv("LICENSE_AUTHORITY_KEY_FILE"),
+        help=(
+            "Caminho para a chave privada da autoridade de licenças. "
+            "Se omitido, utiliza a variável LICENSE_AUTHORITY_KEY_FILE."
+        ),
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -306,7 +320,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     try:
         handler(args, client)  # type: ignore[arg-type]
-    except KeygenError as exc:
+    except (KeygenError, LicenseKeyError) as exc:
         parser.error(str(exc))
         return 1
     except requests.RequestException as exc:

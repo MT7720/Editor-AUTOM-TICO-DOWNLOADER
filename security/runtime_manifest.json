@@ -8,11 +8,11 @@
             "path": "ffmpeg/ffmpeg-7.1.1-essentials_build/bin/ffmpeg.exe",
             "signature": "76ccf6c487a66206ea5fa1f61cd8bd8ccea535f0db0ce26a225523c0e54c593d"
         },
-        "license_authority_keys": {
-            "hash": "c449e99e8b7ea40abf0676bd1d77b0ebae7c7112d9ec328ceca8908f2867363a",
+        "license_authority_public_key": {
+            "hash": "63d5b1080923d6b2166e122f54a8fa27d1ae227212f84276f262e3aa3fe50da2",
             "normalize_newlines": true,
-            "path": "security/license_authority_keys.json",
-            "signature": "ba1fb5cd8cb0fb1c38aece7e17c861932ff639528354fe5a624f621e60b1935e"
+            "path": "security/license_authority_public_key.json",
+            "signature": "88ba5a87bdbba4773ec66f51ed4b9db23b08eb8d2cd4f562c8f82704285637d9"
         },
         "process_manager": {
             "hash": "3b69a546d9a7fcdb498d897b6d4a35c1bed851f277372abba6a5f76bcee7aba9",
