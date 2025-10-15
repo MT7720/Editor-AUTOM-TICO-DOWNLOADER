@@ -37,6 +37,7 @@ def license_app(monkeypatch):
     app._license_check_failures = 0
     app._license_termination_initiated = False
     app.license_data = {"meta": {"key": "stored-key"}}
+    app.LICENSE_CHECK_JITTER_FACTOR = 0
 
     yield app, root.after_calls
 
@@ -48,7 +49,7 @@ def test_periodic_license_validation_success(monkeypatch, license_app):
         assert license_id == "test-id"
         assert fingerprint == "fingerprint"
         assert license_key == "stored-key"
-        return {"meta": {"valid": True}}, None
+        return {"meta": {"valid": True}}, None, None
 
     monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
 
@@ -66,7 +67,7 @@ def test_license_validation_network_backoff(monkeypatch, license_app):
     monkeypatch.setattr(
         license_checker,
         "validate_license_with_id",
-        lambda *args, **kwargs: (None, "network-error"),
+        lambda *args, **kwargs: (None, "network-error", None),
     )
 
     app._run_license_check()
@@ -87,7 +88,7 @@ def test_license_validation_invalid_triggers_exit(monkeypatch, license_app):
     monkeypatch.setattr(
         license_checker,
         "validate_license_with_id",
-        lambda *args, **kwargs: ({"meta": {"valid": False, "detail": "Expirada"}}, None),
+        lambda *args, **kwargs: ({"meta": {"valid": False, "detail": "Expirada"}}, None, None),
     )
 
     warnings = {}
@@ -121,7 +122,7 @@ def test_license_validation_authentication_failure(monkeypatch, license_app):
 
     def fake_validate(license_id, fingerprint, license_key):
         assert license_key is None
-        return None, "auth-error"
+        return None, "auth-error", None
 
     monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
 
