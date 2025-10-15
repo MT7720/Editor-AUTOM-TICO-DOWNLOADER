@@ -7,6 +7,8 @@ import sys
 import pytest
 
 from security import secrets
+from gui import constants as gui_constants
+import gui.config_manager as config_manager
 
 
 @pytest.fixture(autouse=True)
@@ -116,6 +118,59 @@ def test_load_license_secrets_from_inline_config(monkeypatch, tmp_path):
     assert credentials.account_id == "inline-account"
     assert credentials.product_token == "inline-token"
     assert credentials.api_base_url == "https://example.test/accounts/inline-account"
+
+
+def test_inline_credentials_survive_config_roundtrip(monkeypatch, tmp_path):
+    config_path = tmp_path / "video_editor_config.json"
+    initial_config = {
+        "license_account_id": "roundtrip-account",
+        "license_product_token": "roundtrip-token",
+        "license_api_base_url": "https://example.test/accounts/roundtrip-account",
+        "license_credentials_path": "relative/path/to/credentials.json",
+        "ffmpeg_path": "",
+    }
+    config_path.write_text(json.dumps(initial_config), encoding="utf-8")
+
+    monkeypatch.setattr(gui_constants, "CONFIG_FILE", str(config_path))
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", str(config_path))
+    monkeypatch.setattr(secrets, "_iter_config_candidates", lambda: (config_path,))
+
+    for env_var in (
+        "KEYGEN_LICENSE_BUNDLE",
+        "KEYGEN_LICENSE_BUNDLE_PATH",
+        "KEYGEN_ACCOUNT_ID",
+        "KEYGEN_PRODUCT_TOKEN",
+        "KEYGEN_API_BASE_URL",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
+    loaded_config = config_manager.ConfigManager.load_config()
+
+    assert loaded_config["license_account_id"] == "roundtrip-account"
+    assert loaded_config["license_product_token"] == "roundtrip-token"
+    assert loaded_config["license_credentials_path"] == "relative/path/to/credentials.json"
+
+    config_without_secrets = {
+        key: value
+        for key, value in loaded_config.items()
+        if not key.startswith("license_")
+    }
+    config_without_secrets["output_folder"] = "some/other/path"
+
+    config_manager.ConfigManager.save_config(config_without_secrets)
+
+    reloaded_config = config_manager.ConfigManager.load_config()
+    assert reloaded_config["license_account_id"] == "roundtrip-account"
+    assert reloaded_config["license_product_token"] == "roundtrip-token"
+    assert reloaded_config["license_api_base_url"] == (
+        "https://example.test/accounts/roundtrip-account"
+    )
+    assert reloaded_config["license_credentials_path"] == "relative/path/to/credentials.json"
+
+    credentials = secrets.load_license_secrets()
+    assert credentials.account_id == "roundtrip-account"
+    assert credentials.product_token == "roundtrip-token"
+    assert credentials.api_base_url == "https://example.test/accounts/roundtrip-account"
 
 
 def test_load_license_secrets_with_minor_json_error(monkeypatch, tmp_path):

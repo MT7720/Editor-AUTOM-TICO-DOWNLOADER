@@ -117,8 +117,31 @@ class ConfigManager:
     @staticmethod
     def save_config(config: Dict[str, Any]) -> None:
         try:
+            preserved_values: Dict[str, Any] = {}
+
+            if os.path.exists(CONFIG_FILE):
+                try:
+                    with open(CONFIG_FILE, "r", encoding="utf-8") as existing_file:
+                        file_content = existing_file.read()
+                    if file_content:
+                        previous_config = json.loads(file_content)
+                        preserved_values = {
+                            key: value
+                            for key, value in previous_config.items()
+                            if key.startswith("license_")
+                        }
+                except (OSError, ValueError) as exc:
+                    logger.warning(
+                        "Não foi possível ler o ficheiro de configuração existente: %s",
+                        exc,
+                    )
+
+            config_to_write = dict(config)
+            for key, value in preserved_values.items():
+                config_to_write.setdefault(key, value)
+
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
+                json.dump(config_to_write, f, indent=2, ensure_ascii=False)
         except Exception as exc:  # pragma: no cover - defensive I/O
             logger.error("Erro ao guardar o ficheiro de configuração: %s", exc)
 
