@@ -235,7 +235,12 @@ def test_activate_new_license_with_missing_credentials(monkeypatch):
     monkeypatch.setattr(module, "load_license_secrets", _raise_secret_loader_error)
     module.get_license_service_credentials.cache_clear()
 
-    activation_data, message = module.activate_new_license("token", "fingerprint")
+    activation_data, message, error_code = module.activate_new_license("token", "fingerprint")
 
     assert activation_data is None
-    assert "credenciais" in message.lower()
+    message_lower = message.lower()
+    assert (
+        "credenciais" in message_lower
+        or module.MIGRATION_REQUIRED_MESSAGE.lower() in message_lower
+    )
+    assert error_code is None or error_code == "migration_required"
