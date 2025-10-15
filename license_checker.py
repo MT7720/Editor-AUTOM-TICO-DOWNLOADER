@@ -24,7 +24,13 @@ from ttkbootstrap.constants import *
 # --- NOVO IMPORT ---
 # Importa a função para atualizar o estado da licença
 from security.license_manager import set_license_as_valid
-from security.secrets import LicenseServiceCredentials, SecretLoaderError, load_license_secrets
+from security.secrets import (
+    LicenseServiceCredentials,
+    SecretLoaderError,
+    get_inline_credentials_snapshot,
+    load_license_secrets,
+    persist_inline_credentials,
+)
 
 
 class LicenseTamperedError(Exception):
@@ -53,6 +59,8 @@ MIGRATION_REQUIRED_MESSAGE = (
     "Esta versão do Editor Automático aceita apenas chaves emitidas diretamente pelo Keygen. "
     "Solicite uma chave actualizada no portal oficial para continuar."
 )
+
+PLACEHOLDER_ACCOUNT_ID = "9798e344-f107-4cfd-bcd3-af9b8e75d352"
 
 
 @lru_cache(maxsize=1)
@@ -126,6 +134,17 @@ def _validate_key_with_keygen(
         if lowered_code in {"license_not_found", "license_key_not_found"}:
             invalid_detail = normalized_detail
         elif response.status_code == 404:
+            invalid_detail = normalized_detail
+
+        if (
+            response.status_code == 404
+            and "account" in normalized_detail.lower()
+        ):
+            guidance = (
+                " Verifique o Account ID configurado nas opções avançadas do diálogo de ativação."
+            )
+            if guidance.strip() not in normalized_detail:
+                normalized_detail = f"{normalized_detail}{guidance}"
             invalid_detail = normalized_detail
 
         return None, normalized_detail, invalid_detail
@@ -216,6 +235,10 @@ class CustomLicenseDialog(ttk.Toplevel):
         self.entry.pack(pady=(0, 12), ipady=4)
         self.entry.focus_set()
 
+        self._advanced_visible = False
+        self._advanced_widgets: list[tk.Widget] = []
+        self._build_advanced_section(main_frame)
+
         self.status_label = ttk.Label(
             main_frame,
             text="",
@@ -299,6 +322,11 @@ class CustomLicenseDialog(ttk.Toplevel):
         self.entry.configure(state=state)
         self.ok_button.configure(state=state)
         self.cancel_button.configure(state=NORMAL)
+        for widget in getattr(self, "_advanced_widgets", []):
+            try:
+                widget.configure(state=state)
+            except tk.TclError:
+                continue
 
     def on_ok(self, event=None):
         if self._future is not None:
@@ -309,7 +337,177 @@ class CustomLicenseDialog(ttk.Toplevel):
             self._update_status("Informe uma chave de licença para continuar.", "danger")
             return
 
+        if not self._ensure_credentials_saved():
+            return
+
         self._start_activation(license_key)
+
+    def _build_advanced_section(self, parent: tk.Misc) -> None:
+        credentials = get_inline_credentials_snapshot()
+        account_default = credentials.get("account_id", "")
+        product_default = credentials.get("product_token", "")
+        api_default = credentials.get("api_base_url", "")
+
+        toggle_container = ttk.Frame(parent)
+        toggle_container.pack(fill=X, pady=(0, 6))
+
+        self._advanced_toggle_button = ttk.Button(
+            toggle_container,
+            text="Mostrar configuração avançada",
+            command=self._toggle_advanced_section,
+            bootstyle="link",
+        )
+        self._advanced_toggle_button.pack(anchor=W)
+
+        self.advanced_frame = ttk.Labelframe(
+            parent,
+            text="Credenciais do Keygen",
+            padding=12,
+        )
+        self.advanced_frame.pack(fill=BOTH, expand=True, pady=(0, 12))
+        self.advanced_frame.pack_forget()
+
+        guidance = (
+            "Utilize o Account ID e o Product Token fornecidos pelo portal do Keygen. "
+            "Valores de exemplo provocam a mensagem 'account not found'."
+        )
+        warning_label = ttk.Label(
+            self.advanced_frame,
+            text=guidance,
+            wraplength=420,
+            bootstyle="warning",
+            justify=LEFT,
+        )
+        warning_label.grid(row=0, column=0, columnspan=2, sticky=W, pady=(0, 10))
+
+        ttk.Label(
+            self.advanced_frame,
+            text="Account ID (UUID da conta)",
+            justify=LEFT,
+        ).grid(row=1, column=0, sticky=W)
+
+        self.account_entry = ttk.Entry(self.advanced_frame, width=48)
+        self.account_entry.grid(row=1, column=1, sticky=EW, padx=(10, 0))
+        if account_default:
+            self.account_entry.insert(0, account_default)
+
+        ttk.Label(
+            self.advanced_frame,
+            text="Product Token",
+            justify=LEFT,
+        ).grid(row=2, column=0, sticky=W, pady=(8, 0))
+
+        self.product_entry = ttk.Entry(self.advanced_frame, width=48, show="•")
+        self.product_entry.grid(row=2, column=1, sticky=EW, padx=(10, 0), pady=(8, 0))
+        if product_default:
+            self.product_entry.insert(0, product_default)
+
+        self._show_token_var = tk.BooleanVar(value=False)
+        self._token_visibility_button = ttk.Checkbutton(
+            self.advanced_frame,
+            text="Mostrar token",
+            variable=self._show_token_var,
+            command=self._toggle_product_visibility,
+        )
+        self._token_visibility_button.grid(row=3, column=1, sticky=W, padx=(10, 0), pady=(2, 0))
+
+        ttk.Label(
+            self.advanced_frame,
+            text="API Base URL (opcional)",
+            justify=LEFT,
+        ).grid(row=4, column=0, sticky=W, pady=(8, 0))
+
+        self.api_entry = ttk.Entry(self.advanced_frame, width=48)
+        self.api_entry.grid(row=4, column=1, sticky=EW, padx=(10, 0), pady=(8, 0))
+        if api_default:
+            self.api_entry.insert(0, api_default)
+
+        ttk.Label(
+            self.advanced_frame,
+            text="Deixe em branco para usar https://api.keygen.sh/v1/accounts/<AccountID>.",
+            wraplength=420,
+            justify=LEFT,
+        ).grid(row=5, column=0, columnspan=2, sticky=W, pady=(6, 0))
+
+        self.advanced_frame.columnconfigure(1, weight=1)
+
+        self._advanced_widgets.extend(
+            [
+                self._advanced_toggle_button,
+                self.account_entry,
+                self.product_entry,
+                self.api_entry,
+                self._token_visibility_button,
+            ]
+        )
+
+        should_show = not account_default or account_default == PLACEHOLDER_ACCOUNT_ID
+        self._set_advanced_visibility(should_show)
+
+    def _toggle_product_visibility(self) -> None:
+        show_value = "" if self._show_token_var.get() else "•"
+        self.product_entry.configure(show=show_value)
+
+    def _toggle_advanced_section(self) -> None:
+        self._set_advanced_visibility(not self._advanced_visible)
+
+    def _set_advanced_visibility(self, visible: bool) -> None:
+        if visible == self._advanced_visible:
+            return
+
+        self._advanced_visible = visible
+        if visible:
+            self.advanced_frame.pack(fill=BOTH, expand=True, pady=(0, 12))
+            self._advanced_toggle_button.configure(text="Ocultar configuração avançada")
+        else:
+            self.advanced_frame.pack_forget()
+            self._advanced_toggle_button.configure(text="Mostrar configuração avançada")
+
+    def _ensure_credentials_saved(self) -> bool:
+        if not hasattr(self, "account_entry"):
+            return True
+
+        account_id = (self.account_entry.get() or "").strip()
+        product_token = (self.product_entry.get() or "").strip()
+        api_base_url = (self.api_entry.get() or "").strip()
+
+        if not account_id and not product_token and not api_base_url:
+            return True
+
+        if not account_id or not product_token:
+            self._update_status(
+                "Informe o Account ID e o Product Token fornecidos pelo Keygen nas opções avançadas.",
+                "danger",
+            )
+            return False
+
+        env_provisioned = any(
+            os.getenv(var)
+            for var in (
+                "KEYGEN_LICENSE_BUNDLE",
+                "KEYGEN_LICENSE_BUNDLE_PATH",
+                "KEYGEN_ACCOUNT_ID",
+                "KEYGEN_PRODUCT_TOKEN",
+            )
+        )
+
+        if account_id == PLACEHOLDER_ACCOUNT_ID and not env_provisioned:
+            self._update_status(
+                "Substitua o Account ID de exemplo pelo valor real disponibilizado pelo Keygen.",
+                "danger",
+            )
+            return False
+
+        try:
+            persist_inline_credentials(account_id, product_token, api_base_url or None)
+        except SecretLoaderError as exc:
+            self._update_status(str(exc), "danger")
+            return False
+
+        if hasattr(get_license_service_credentials, "cache_clear"):
+            get_license_service_credentials.cache_clear()
+
+        return True
 
     def _start_activation(self, license_key: str) -> None:
         self._toggle_inputs(False)

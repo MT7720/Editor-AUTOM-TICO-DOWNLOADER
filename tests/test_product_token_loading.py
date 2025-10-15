@@ -198,8 +198,41 @@ def test_load_license_secrets_with_minor_json_error(monkeypatch, tmp_path):
     credentials = secrets.load_license_secrets()
 
     assert credentials.account_id == "inline-account"
-    assert credentials.product_token == "inline-token"
-    assert credentials.api_base_url == "https://example.test/accounts/inline-account"
+
+
+def test_persist_inline_credentials_updates_config(monkeypatch, tmp_path):
+    config_path = tmp_path / "video_editor_config.json"
+    config_path.write_text(json.dumps({"ffmpeg_path": ""}), encoding="utf-8")
+
+    monkeypatch.setattr(secrets, "_iter_config_candidates", lambda: (config_path,))
+    monkeypatch.setattr(secrets, "_iter_local_bundle_candidates", lambda: ())
+    if hasattr(secrets._load_config_data, "cache_clear"):
+        secrets._load_config_data.cache_clear()
+
+    for env_var in (
+        "KEYGEN_LICENSE_BUNDLE",
+        "KEYGEN_LICENSE_BUNDLE_PATH",
+        "KEYGEN_ACCOUNT_ID",
+        "KEYGEN_PRODUCT_TOKEN",
+        "KEYGEN_API_BASE_URL",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
+    secrets.persist_inline_credentials(
+        "new-account",
+        "new-token",
+        "https://example.test/accounts/new-account",
+    )
+
+    stored_config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert stored_config["license_account_id"] == "new-account"
+    assert stored_config["license_product_token"] == "new-token"
+    assert stored_config["license_api_base_url"] == "https://example.test/accounts/new-account"
+
+    credentials = secrets.load_license_secrets()
+    assert credentials.account_id == "new-account"
+    assert credentials.product_token == "new-token"
+    assert credentials.api_base_url == "https://example.test/accounts/new-account"
 
 
 def test_missing_configuration_raises_error(monkeypatch):

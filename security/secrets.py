@@ -33,6 +33,8 @@ __all__ = [
     "LicenseServiceCredentials",
     "SecretLoaderError",
     "load_license_secrets",
+    "get_inline_credentials_snapshot",
+    "persist_inline_credentials",
 ]
 
 
@@ -316,6 +318,69 @@ def _extract_string_field(raw_data: str, field_name: str) -> Optional[str]:
         return json.loads(f'"{match.group(1)}"')
     except ValueError:
         return match.group(1)
+
+
+def get_inline_credentials_snapshot() -> Dict[str, str]:
+    """Devolve as credenciais embutidas actualmente no ficheiro de configuração."""
+
+    _, config_data = _load_config_data()
+    snapshot: Dict[str, str] = {}
+
+    account_id = config_data.get("license_account_id")
+    if isinstance(account_id, str) and account_id.strip():
+        snapshot["account_id"] = account_id.strip()
+
+    product_token = config_data.get("license_product_token")
+    if isinstance(product_token, str) and product_token.strip():
+        snapshot["product_token"] = product_token.strip()
+
+    api_base_url = config_data.get("license_api_base_url")
+    if isinstance(api_base_url, str) and api_base_url.strip():
+        snapshot["api_base_url"] = api_base_url.strip()
+
+    return snapshot
+
+
+def persist_inline_credentials(
+    account_id: str,
+    product_token: str,
+    api_base_url: Optional[str] = None,
+) -> LicenseServiceCredentials:
+    """Actualiza o ficheiro de configuração com novas credenciais inline."""
+
+    payload: Dict[str, Any] = {
+        "account_id": account_id,
+        "product_token": product_token,
+    }
+    if api_base_url and api_base_url.strip():
+        payload["api_base_url"] = api_base_url.strip()
+
+    credentials = LicenseServiceCredentials.from_payload(payload)
+    _write_inline_credentials(credentials)
+    return credentials
+
+
+def _write_inline_credentials(credentials: LicenseServiceCredentials) -> None:
+    config_path, config_data = _load_config_data()
+    updated_config = dict(config_data)
+
+    updated_config["license_account_id"] = credentials.account_id
+    updated_config["license_product_token"] = credentials.product_token
+    updated_config["license_api_base_url"] = credentials.api_base_url
+
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps(updated_config, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError as exc:  # pragma: no cover - erro inesperado de IO
+        raise SecretLoaderError(
+            "Não foi possível actualizar as credenciais de licenciamento no ficheiro de configuração."
+        ) from exc
+
+    if hasattr(_load_config_data, "cache_clear"):
+        _load_config_data.cache_clear()
 
 def _ensure_payload_is_authenticated(payload: Dict[str, Any]) -> None:
     """Realiza verificações básicas sobre o canal que entregou o bundle."""
