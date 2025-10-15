@@ -23,6 +23,7 @@ import json
 import os
 import stat
 import sys
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -216,10 +217,22 @@ def _load_config_data() -> tuple[Path, Dict[str, Any]]:
         selected_path = config_path
 
         try:
-            with config_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-        except ValueError:
-            data = {}
+            raw_data = config_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        try:
+            data = json.loads(raw_data)
+        except ValueError as exc:
+            print(
+                "Aviso: o ficheiro de configuração '",
+                f"{config_path}",
+                "' contém JSON inválido (",
+                f"{exc}",
+                "). Será aplicada uma recuperação parcial.",
+                sep="",
+            )
+            data = _recover_license_metadata(raw_data)
 
         return selected_path, data
 
@@ -269,6 +282,40 @@ def _extract_inline_credentials(config_data: Dict[str, Any]) -> Optional[Dict[st
 
     return payload
 
+
+def _recover_license_metadata(raw_data: str) -> Dict[str, Any]:
+    """Tenta recuperar campos essenciais mesmo com JSON ligeiramente inválido."""
+
+    recovered: Dict[str, Any] = {}
+
+    for key in (
+        "license_credentials_path",
+        "license_account_id",
+        "license_product_token",
+        "license_api_base_url",
+    ):
+        value = _extract_string_field(raw_data, key)
+        if value is not None:
+            recovered[key] = value
+
+    return recovered
+
+
+def _extract_string_field(raw_data: str, field_name: str) -> Optional[str]:
+    """Extrai o conteúdo textual de um campo string sem depender do JSON completo."""
+
+    pattern = re.compile(
+        rf'"{re.escape(field_name)}"\s*:\s*"((?:\\.|[^"])*)"',
+        flags=re.DOTALL,
+    )
+    match = pattern.search(raw_data)
+    if not match:
+        return None
+
+    try:
+        return json.loads(f'"{match.group(1)}"')
+    except ValueError:
+        return match.group(1)
 
 def _ensure_payload_is_authenticated(payload: Dict[str, Any]) -> None:
     """Realiza verificações básicas sobre o canal que entregou o bundle."""
