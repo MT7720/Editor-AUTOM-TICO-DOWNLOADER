@@ -492,12 +492,17 @@ def check_license(parent_window, activation_timeout=15):
     try:
         load_license_secrets()
     except SecretLoaderError as exc:
-        print(f"Aviso: não foi possível carregar as credenciais do serviço de licenças: {exc}")
-        initial_status_messages.append(
-            "As credenciais do serviço de licenças não estão disponíveis. "
-            "Confirme a instalação do bundle seguro (detalhes abaixo)."
+        diagnostic = (
+            "Credenciais do serviço de licenças ausentes. "
+            "O instalador oficial injeta KEYGEN_LICENSE_BUNDLE automaticamente; "
+            "verifique se o pacote foi construído com o bundle autenticado."
         )
-        initial_status_messages.append(str(exc))
+        print("Diagnóstico de licenciamento: " + diagnostic)
+        print(f"Detalhes técnicos: {exc}")
+        initial_status_messages.append(
+            "As credenciais do serviço de licenças não estão disponíveis nesta instalação. "
+            "Peça um novo instalador ou contacte o suporte antes de tentar ativar novamente."
+        )
 
     if initial_status_messages:
         print("Mensagens iniciais de status da licença:")

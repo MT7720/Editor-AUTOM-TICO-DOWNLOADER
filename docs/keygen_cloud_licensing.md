@@ -42,8 +42,22 @@ O módulo `security.secrets` procura automaticamente os dados de `account_id`,
    suportados para apontar para bundles externos.
 
 Escolha um único método e garanta que os ficheiros sejam protegidos durante a
-transmissão e o armazenamento. Após o build, remova quaisquer credenciais
-temporárias das máquinas de compilação.
+transmissão e o armazenamento. Se nenhuma credencial for encontrada, o
+`security.secrets.load_license_secrets` interrompe o processo imediatamente com
+`SecretLoaderError`, evitando que binários sejam produzidos sem canal
+autenticado. Após o build, remova quaisquer credenciais temporárias das
+máquinas de compilação.
+
+### 2.1. Bundles injectados pelo instalador
+
+Os instaladores oficiais (MSI/EXE) são gerados em pipelines que exportam o
+bundle assinado através de `KEYGEN_LICENSE_BUNDLE`. Durante o empacotamento,
+`build_all.bat` valida a presença das credenciais e falha caso o bundle não
+esteja disponível. Na primeira execução, a aplicação copia o bundle para o
+directório protegido do utilizador ou mantém-no embutido como
+`resources/license_credentials.json`. Em ambos os casos, o utilizador final vê
+apenas o campo "chave de licença" no diálogo e nunca tem contacto directo com o
+`product_token` ou `account_id`.
 
 ## 3. Automatizar builds e distribuição
 

@@ -111,7 +111,7 @@ def test_load_license_secrets_from_inline_config(monkeypatch, tmp_path):
     assert credentials.api_base_url == "https://example.test/accounts/inline-account"
 
 
-def test_missing_configuration_uses_embedded_defaults(monkeypatch):
+def test_missing_configuration_raises_error(monkeypatch):
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
     monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
@@ -119,14 +119,13 @@ def test_missing_configuration_uses_embedded_defaults(monkeypatch):
 
     monkeypatch.setattr(secrets, "_load_bundle_from_local_installation", lambda: None)
 
-    credentials = secrets.load_license_secrets()
+    with pytest.raises(secrets.SecretLoaderError) as excinfo:
+        secrets.load_license_secrets()
 
-    assert credentials.account_id == secrets.DEFAULT_LICENSE_CREDENTIALS["account_id"]
-    assert credentials.product_token == secrets.DEFAULT_LICENSE_CREDENTIALS["product_token"]
-    assert (
-        credentials.api_base_url
-        == secrets.DEFAULT_LICENSE_CREDENTIALS["api_base_url"]
-    )
+    message = str(excinfo.value)
+    lowered = message.lower()
+    assert "credenciais" in lowered
+    assert "keygen_license_bundle" in lowered
 
 
 def test_license_checker_exposes_cached_credentials(monkeypatch):
@@ -150,7 +149,7 @@ def test_license_checker_exposes_cached_credentials(monkeypatch):
     assert module.get_product_token() == "updated-token"
 
 
-def test_embedded_fallback_is_used_when_env_cleared(monkeypatch):
+def test_empty_environment_raises_error(monkeypatch):
     monkeypatch.setenv("KEYGEN_LICENSE_BUNDLE", "")
     monkeypatch.setenv("KEYGEN_LICENSE_BUNDLE_PATH", "")
     monkeypatch.setenv("KEYGEN_ACCOUNT_ID", "")
@@ -159,14 +158,8 @@ def test_embedded_fallback_is_used_when_env_cleared(monkeypatch):
 
     monkeypatch.setattr(secrets, "_load_bundle_from_local_installation", lambda: None)
 
-    credentials = secrets.load_license_secrets()
-
-    assert credentials.account_id == secrets.DEFAULT_LICENSE_CREDENTIALS["account_id"]
-    assert credentials.product_token == secrets.DEFAULT_LICENSE_CREDENTIALS["product_token"]
-    assert (
-        credentials.api_base_url
-        == secrets.DEFAULT_LICENSE_CREDENTIALS["api_base_url"]
-    )
+    with pytest.raises(secrets.SecretLoaderError):
+        secrets.load_license_secrets()
 
 
 def test_validate_license_with_missing_credentials(monkeypatch):
