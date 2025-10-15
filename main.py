@@ -11,6 +11,7 @@ from tkinter import messagebox
 
 # --- MÓDULOS DE SEGURANÇA E LICENCIAMENTO ---
 import license_checker
+from security.license_manager import set_license_as_valid
 from security.runtime_guard import enforce_runtime_safety, schedule_integrity_check, SecurityViolation
 # ---------------------------------------------
 
@@ -100,6 +101,7 @@ if __name__ == "__main__":
         is_licensed, license_data = license_checker.check_license(root)
 
         if is_licensed:
+            set_license_as_valid()
             print("Licença validada. Iniciando a interface principal...")
             
             # 3. AGENDAMENTO DAS VERIFICAÇÕES DE SEGURANÇA CONTÍNUAS
