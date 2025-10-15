@@ -48,12 +48,31 @@ def _valid_token(fingerprint: str, serial: str = "serial-1") -> str:
 
 def test_activate_new_license_rejects_legacy_key():
     activation_data, message, error_code = license_checker.activate_new_license(
-        "AAAA-BBBB-CCCC-DDDD", "fingerprint"
+        "legacy.token.com.pontos", "fingerprint"
     )
 
     assert activation_data is None
     assert error_code == "migration_required"
     assert license_checker.MIGRATION_REQUIRED_MESSAGE in message
+
+
+def test_activate_new_license_sends_hyphenated_keys_to_keygen(monkeypatch):
+    captured = {}
+
+    def fake_validate(key, fingerprint):
+        captured["args"] = (key, fingerprint)
+        return {"meta": {"valid": True}}, None, None
+
+    monkeypatch.setattr(license_checker, "_validate_key_with_keygen", fake_validate)
+
+    activation_data, message, error_code = license_checker.activate_new_license(
+        "AAAA-BBBB-CCCC-DDDD", "fingerprint"
+    )
+
+    assert captured["args"] == ("AAAA-BBBB-CCCC-DDDD", "fingerprint")
+    assert activation_data == {"meta": {"valid": True}}
+    assert message == "Licença ativada com sucesso."
+    assert error_code is None
 
 
 def test_activate_new_license_blocks_revoked_serial(configure_revocation_cache):
