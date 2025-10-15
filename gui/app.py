@@ -199,12 +199,22 @@ class VideoEditorApp:
         payload = None
         error = None
         try:
-            payload, error = license_checker.validate_license_with_id(
+            payload, error, invalidated = license_checker.validate_license_with_id(
                 self._license_id, fingerprint, license_key
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Erro inesperado ao contactar o servidor de licenças.", exc_info=exc)
             error = str(exc)
+            invalidated = False
+
+        if invalidated:
+            detail = None
+            if isinstance(payload, dict):
+                detail = payload.get("meta", {}).get("detail")
+            detail = detail or "Licença não encontrada ou removida."
+            logger.error("Licença inválida detectada: %s", detail)
+            self._handle_invalid_license(detail)
+            return
 
         if error or not payload:
             self._license_check_failures += 1

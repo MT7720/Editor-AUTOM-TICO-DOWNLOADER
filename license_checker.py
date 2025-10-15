@@ -287,16 +287,18 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
     É efetuada uma requisição ``POST`` para o endpoint de validação remoto,
     enviando a impressão digital da máquina e, quando disponível, a chave da
     licença previamente armazenada. A função devolve sempre uma tupla
-    ``(payload, error)``: ``payload`` contém o JSON devolvido pelo serviço
-    quando a comunicação é bem-sucedida (mesmo que a licença seja considerada
-    inválida) e ``error`` traz uma mensagem normalizada quando ocorre algum
-    problema de rede ou quando a resposta não pode ser interpretada.
+    ``(payload, error, invalidated)``: ``payload`` contém o JSON devolvido pelo
+    serviço quando a comunicação é bem-sucedida (mesmo que a licença seja
+    considerada inválida), ``error`` traz uma mensagem normalizada quando ocorre
+    algum problema de rede ou quando a resposta não pode ser interpretada e
+    ``invalidated`` assinala quando o servidor indica que a licença é
+    definitivamente inválida (por exemplo, foi removida ou não existe).
     """
 
     try:
         credentials = get_license_service_credentials()
     except RuntimeError as exc:
-        return None, str(exc)
+        return None, str(exc), False
 
     headers = {
         "Authorization": f"Bearer {credentials.product_token}",
@@ -314,7 +316,9 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
             timeout=10,
         )
     except requests.exceptions.RequestException:
-        return None, "Não foi possível contactar o servidor de licenças."
+        return None, "Não foi possível contactar o servidor de licenças.", False
+
+    invalidated = False
 
     if response.status_code >= 400:
         detail = None
@@ -322,15 +326,27 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
             detail = response.json().get("errors", [{}])[0].get("detail")
         except (ValueError, AttributeError, IndexError):
             detail = None
+
+        not_found = response.status_code == 404
+        if detail:
+            normalized = detail.lower()
+            not_found = not_found or "not found" in normalized or "não encontrada" in normalized
+
+        if not_found:
+            invalidated = True
+            message = detail or "A licença não foi encontrada ou foi removida."
+            payload = {"meta": {"valid": False, "detail": message}}
+            return payload, None, invalidated
+
         message = detail or "Não foi possível validar a licença. O servidor rejeitou a solicitação."
-        return None, message
+        return None, message, invalidated
 
     try:
         payload = response.json()
     except ValueError:
-        return None, "Resposta inválida do servidor de licenças."
+        return None, "Resposta inválida do servidor de licenças.", False
 
-    return payload, None
+    return payload, None, invalidated
 
 def activate_new_license(license_key, fingerprint):
     """ Ativa uma nova licença usando o fluxo simples e funcional do script antigo. """
@@ -450,8 +466,14 @@ def check_license(parent_window, activation_timeout=15):
         license_id = stored_data.get("data", {}).get("id")
         license_key = stored_data.get("meta", {}).get("key") if isinstance(stored_data, dict) else None
         if license_id:
-            validation_result, error = validate_license_with_id(license_id, fingerprint, license_key)
-            if error:
+            validation_result, error, invalidated = validate_license_with_id(license_id, fingerprint, license_key)
+            if invalidated:
+                detail = None
+                if isinstance(validation_result, dict):
+                    detail = validation_result.get("meta", {}).get("detail")
+                detail = detail or "A licença associada a esta instalação já não está disponível."
+                initial_status_messages.append(detail)
+            elif error:
                 initial_status_messages.append(
                     f"Não foi possível revalidar a licença existente: {error}"
                 )
