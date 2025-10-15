@@ -21,26 +21,6 @@ from .constants import (
 from .utils import logger
 
 
-LICENSE_CONFIG_KEYS = {
-    "license_credentials_path",
-    "license_api_token",
-    "license_api_url",
-}
-
-
-def _migrate_legacy_license_fields(config: Dict[str, Any]) -> None:
-    """Atualiza chaves antigas do Keygen para o novo formato de serviço."""
-
-    config.pop("license_account_id", None)
-    product_token = config.pop("license_product_token", None)
-    api_base_url = config.pop("license_api_base_url", None)
-
-    if isinstance(product_token, str) and isinstance(api_base_url, str):
-        config.setdefault("license_api_token", product_token)
-        config.setdefault("license_api_url", api_base_url)
-
-
-
 class ConfigManager:
     """Persist and restore application configuration."""
 
@@ -129,7 +109,6 @@ class ConfigManager:
                         for key in list(saved_config.keys()):
                             if key.startswith("banner_preview_language"):
                                 saved_config.pop(key, None)
-                        _migrate_legacy_license_fields(saved_config)
                         default_config.update(saved_config)
         except Exception as exc:  # pragma: no cover - defensive I/O
             logger.warning("Não foi possível carregar o ficheiro de configuração: %s", exc)
@@ -149,7 +128,7 @@ class ConfigManager:
                         preserved_values = {
                             key: value
                             for key, value in previous_config.items()
-                            if key in LICENSE_CONFIG_KEYS
+                            if key.startswith("license_")
                         }
                 except (OSError, ValueError) as exc:
                     logger.warning(

@@ -1,13 +1,21 @@
 import types
 
 import license_checker
-from security import licensing_api
+
+
+class _DummyResponse:
+    def __init__(self, status_code: int, payload):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
 
 
 def _configure_credentials(monkeypatch):
     credentials = types.SimpleNamespace(
         api_base_url="https://api.example.test",
-        api_token="service-token",
+        product_token="product-token",
     )
     monkeypatch.setattr(license_checker, "get_license_service_credentials", lambda: credentials)
 
@@ -17,51 +25,43 @@ def test_activate_new_license_success(monkeypatch):
 
     calls = {}
 
-    def fake_validate_license_key(*, base_url, api_token, license_key, timeout=10):
-        calls["base_url"] = base_url
-        calls["api_token"] = api_token
-        calls["license_key"] = license_key
+    def fake_post(url, json=None, headers=None, timeout=None):
+        calls["url"] = url
+        calls["json"] = json
+        calls["headers"] = headers
         calls["timeout"] = timeout
-        return licensing_api.LicenseAPIResponse(
-            status_code=200,
-            payload={
-                "valid": True,
-                "message": "Tudo certo",
-                "license": {"id": "license-1"},
-                "meta": {"extra": "value"},
-            },
-        )
+        return _DummyResponse(200, {"data": {"id": "license-1"}, "meta": {"valid": True}})
 
-    monkeypatch.setattr(license_checker.licensing_api, "validate_license_key", fake_validate_license_key)
+    monkeypatch.setattr(license_checker.requests, "post", fake_post)
 
     payload, message, detail = license_checker.activate_new_license("KEY-123", "fingerprint-xyz")
 
     assert payload["meta"]["key"] == "KEY-123"
     assert payload["meta"]["valid"] is True
     assert payload["meta"]["fingerprint"] == "fingerprint-xyz"
-    assert payload["license"]["id"] == "license-1"
     assert payload["data"]["id"] == "license-1"
-    assert payload["valid"] is True
-    assert payload["message"] == "Tudo certo"
     assert "sucesso" in message.lower()
     assert detail is None
 
-    assert calls["base_url"] == "https://api.example.test"
-    assert calls["api_token"] == "service-token"
-    assert calls["license_key"] == "KEY-123"
+    assert calls["url"] == "https://api.example.test/licenses/actions/validate-key"
+    assert calls["json"] == {
+        "data": {"type": "licenses"},
+        "meta": {"key": "KEY-123", "fingerprint": "fingerprint-xyz"},
+    }
+    assert calls["headers"]["Authorization"] == "Bearer product-token"
+    assert calls["headers"]["Accept"] == "application/vnd.api+json"
+    assert calls["headers"]["Content-Type"] == "application/vnd.api+json"
     assert calls["timeout"] == 10
 
 
 def test_activate_new_license_handles_api_error(monkeypatch):
     _configure_credentials(monkeypatch)
 
-    def fake_validate_license_key(**_kwargs):
-        return licensing_api.LicenseAPIResponse(
-            status_code=404,
-            payload={"valid": False, "message": "Licença inválida"},
-        )
-
-    monkeypatch.setattr(license_checker.licensing_api, "validate_license_key", fake_validate_license_key)
+    response = _DummyResponse(
+        404,
+        {"errors": [{"detail": "Licença inválida", "code": "LICENSE_NOT_FOUND"}]},
+    )
+    monkeypatch.setattr(license_checker.requests, "post", lambda *args, **kwargs: response)
 
     payload, message, detail = license_checker.activate_new_license("BAD", "fp")
 
@@ -73,10 +73,10 @@ def test_activate_new_license_handles_api_error(monkeypatch):
 def test_activate_new_license_handles_network_error(monkeypatch):
     _configure_credentials(monkeypatch)
 
-    def raise_error(**_kwargs):
-        raise licensing_api.LicenseAPINetworkError("timeout")
+    def raise_error(*_args, **_kwargs):
+        raise license_checker.requests.RequestException("timeout")
 
-    monkeypatch.setattr(license_checker.licensing_api, "validate_license_key", raise_error)
+    monkeypatch.setattr(license_checker.requests, "post", raise_error)
 
     payload, message, detail = license_checker.activate_new_license("KEY-123", "fingerprint")
 
