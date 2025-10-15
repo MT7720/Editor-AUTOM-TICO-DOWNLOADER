@@ -5,6 +5,8 @@ import platform
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import requests
@@ -13,12 +15,16 @@ import ttkbootstrap as ttk
 from tkinter import messagebox
 from ttkbootstrap.constants import *
 
+from security.license_authority import verify_token
 from security.license_manager import set_license_as_valid
+from security import secrets
+from security.secrets import SecretLoaderError
+
+load_license_secrets = secrets.load_license_secrets
 
 
-ACCOUNT_ID = "9798e344-f107-4cfd-bc83-af9b8e75d352"
-PRODUCT_TOKEN = "prod-e3d63a2e5b9b825ec166c0bd631be99c5e9cd27761b3f899a3a4014f537e64bdv3"
-API_BASE_URL = f"https://api.keygen.sh/v1/accounts/{ACCOUNT_ID}"
+LICENSE_REVOCATION_FILE_ENV_VAR = "EDITOR_AUTOMATICO_LICENSE_REVOCATIONS"
+_DEFAULT_REVOCATION_FILE = Path(__file__).with_name("security").joinpath("license_revocations.json")
 
 
 def resource_path(relative_path: str) -> str:
@@ -42,7 +48,13 @@ class LicenseTamperedError(Exception):
 
 
 class CustomLicenseDialog(ttk.Toplevel):
-    def __init__(self, parent: tk.Misc):
+    def __init__(
+        self,
+        parent: tk.Misc,
+        fingerprint: Optional[str] = None,
+        activation_timeout: Optional[int] = None,
+        initial_status: Optional[str] = None,
+    ):
         super().__init__(parent)
         self.transient(parent)
         self.title("Ativação de Licença")
@@ -75,6 +87,18 @@ class CustomLicenseDialog(ttk.Toplevel):
         self.entry = ttk.Entry(main_frame, width=50, font=("Segoe UI", 10))
         self.entry.pack(pady=(0, 20), ipady=4)
         self.entry.focus_set()
+
+        status_text = (initial_status or "").strip()
+        self.status_var = tk.StringVar(value=status_text)
+        status_label = ttk.Label(
+            main_frame,
+            textvariable=self.status_var,
+            font=("Segoe UI", 9),
+            wraplength=360,
+            bootstyle="secondary",
+            justify=CENTER,
+        )
+        status_label.pack(fill=X, pady=(0, 10))
 
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill="x")
@@ -158,91 +182,159 @@ def get_machine_fingerprint() -> str:
     return hashlib.sha256(identifier.encode()).hexdigest()
 
 
-def validate_license_with_id(license_id: str, fingerprint: str) -> Optional[Dict[str, Any]]:
-    headers = {
-        "Authorization": f"Bearer {PRODUCT_TOKEN}",
-        "Accept": "application/vnd.api+json",
-    }
+@lru_cache(maxsize=1)
+def get_license_service_credentials() -> secrets.LicenseServiceCredentials:
+    """Load and cache the credentials required to talk to Keygen."""
+
+    return load_license_secrets()
+
+
+def get_product_token() -> str:
+    return get_license_service_credentials().product_token
+
+
+def get_api_base_url() -> str:
+    return get_license_service_credentials().api_base_url
+
+
+@lru_cache(maxsize=1)
+def _load_revoked_serials() -> Tuple[str, ...]:
+    path_value = os.getenv(LICENSE_REVOCATION_FILE_ENV_VAR)
+    if path_value:
+        candidate = Path(path_value)
+    else:
+        candidate = _DEFAULT_REVOCATION_FILE
     try:
-        response = requests.post(
-            f"{API_BASE_URL}/licenses/{license_id}/actions/validate",
-            params={"fingerprint": fingerprint},
-            headers=headers,
-            timeout=10,
+        with candidate.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return tuple()
+    except (OSError, json.JSONDecodeError):
+        return tuple()
+    revoked = data.get("revoked")
+    if not isinstance(revoked, list):
+        return tuple()
+    cleaned = [str(item).strip() for item in revoked if isinstance(item, str) and item.strip()]
+    return tuple(cleaned)
+
+
+def _clear_revocation_cache() -> None:
+    _load_revoked_serials.cache_clear()
+
+
+def _is_serial_revoked(serial: Optional[str]) -> bool:
+    if not serial:
+        return False
+    return serial in _load_revoked_serials()
+
+
+def _is_legacy_license_key(license_key: str) -> bool:
+    return "." in license_key
+
+
+def _handle_legacy_license_key(license_key: str, fingerprint: str) -> Tuple[None, str, str]:
+    try:
+        claims = verify_token(license_key)
+    except Exception:
+        return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+
+    claim_serial = str(claims.get("serial", "")) if claims.get("serial") else ""
+    if _is_serial_revoked(claim_serial):
+        return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+
+    claim_fingerprint = claims.get("fingerprint")
+    if claim_fingerprint and fingerprint and claim_fingerprint != fingerprint:
+        return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+
+    return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+
+
+def _extract_error_detail(payload: Dict[str, Any]) -> Optional[str]:
+    errors = payload.get("errors")
+    if isinstance(errors, list) and errors:
+        detail = errors[0].get("detail")
+        if isinstance(detail, str) and detail.strip():
+            return detail.strip()
+    meta = payload.get("meta")
+    if isinstance(meta, dict):
+        detail = meta.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            return detail.strip()
+    return None
+
+
+def _validate_key_with_keygen(
+    license_key: str, fingerprint: str
+) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
+    try:
+        credentials = get_license_service_credentials()
+    except SecretLoaderError as exc:
+        message = (
+            "Não foi possível carregar as credenciais do serviço de licenças. "
+            f"{exc}"
         )
-    except requests.RequestException:
-        return None
-    try:
-        return response.json()
-    except ValueError:
-        return None
+        return None, message, None
 
-
-def _request_key_validation(license_key: str, fingerprint: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    headers = {
-        "Content-Type": "application/vnd.api+json",
-        "Accept": "application/vnd.api+json",
+    payload: Dict[str, Any] = {
+        "data": {"type": "licenses"},
+        "meta": {"key": license_key},
     }
-    payload: Dict[str, Any] = {"meta": {"key": license_key}}
     if fingerprint:
         payload["meta"]["fingerprint"] = fingerprint
+
+    headers = {
+        "Authorization": f"Bearer {credentials.product_token}",
+        "Accept": "application/vnd.api+json",
+        "Content-Type": "application/vnd.api+json",
+    }
+
     try:
         response = requests.post(
-            f"{API_BASE_URL}/licenses/actions/validate-key",
+            f"{credentials.api_base_url}/licenses/actions/validate-key",
             json=payload,
             headers=headers,
             timeout=10,
         )
-        response.raise_for_status()
     except requests.RequestException:
-        return None, "Não foi possível contactar o servidor para validar a chave."
+        return None, "Não foi possível contactar o servidor para validar a chave.", None
+
     try:
         data = response.json()
     except ValueError:
-        return None, "Resposta inválida do servidor de licenças."
-    if not data.get("meta", {}).get("valid"):
-        detail = data.get("meta", {}).get("detail") or "Chave inválida ou expirada."
-        return data, detail
-    return data, None
+        return None, "Resposta inválida do servidor de licenças.", None
+
+    if response.status_code >= 400:
+        detail = _extract_error_detail(data)
+        message = detail or "Não foi possível validar a chave de licença."
+        return None, message, detail
+
+    meta = data.get("meta", {}) if isinstance(data, dict) else {}
+    if meta.get("valid") is not True:
+        detail = _extract_error_detail(data) or "Chave inválida ou expirada."
+        return None, detail, detail
+
+    meta.setdefault("key", license_key)
+    if fingerprint:
+        meta.setdefault("fingerprint", fingerprint)
+    data["meta"] = meta
+    return data, None, None
 
 
-def activate_new_license(license_key: str, fingerprint: str) -> Tuple[Optional[Dict[str, Any]], str]:
-    validation_data, error = _request_key_validation(license_key, fingerprint)
-    if error:
-        return None, error
-    if not validation_data:
-        return None, "Não foi possível validar a chave de licença."
-    license_id = validation_data["data"]["id"]
-    activation_payload = {
-        "data": {
-            "type": "machines",
-            "attributes": {"fingerprint": fingerprint},
-            "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}},
-        }
-    }
-    headers = {
-        "Authorization": f"Bearer {PRODUCT_TOKEN}",
-        "Accept": "application/vnd.api+json",
-        "Content-Type": "application/vnd.api+json",
-    }
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/machines",
-            json=activation_payload,
-            headers=headers,
-            timeout=10,
-        )
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        if getattr(exc, "response", None) is not None and exc.response.status_code == 422:
-            try:
-                error_detail = exc.response.json().get("errors", [{}])[0]
-            except ValueError:
-                error_detail = {}
-            if error_detail.get("code") == "FINGERPRINT_ALREADY_TAKEN":
-                return validation_data, "Máquina já estava ativada."
-        return None, "Não foi possível ativar esta máquina. A licença pode estar em uso ou sem vagas."
-    return validation_data, "Ativação bem-sucedida."
+def activate_new_license(
+    license_key: str, fingerprint: str
+) -> Tuple[Optional[Dict[str, Any]], str, Optional[str]]:
+    normalized_key = (license_key or "").strip()
+    if not normalized_key:
+        return None, "Informe uma chave de licença válida.", None
+
+    if _is_legacy_license_key(normalized_key):
+        return _handle_legacy_license_key(normalized_key, fingerprint)
+
+    payload, error, detail = _validate_key_with_keygen(normalized_key, fingerprint)
+    if payload is None:
+        return None, error or "Não foi possível validar a chave de licença.", detail
+
+    return payload, "Licença ativada com sucesso.", None
 
 
 def validate_license_key(
@@ -250,11 +342,17 @@ def validate_license_key(
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
     normalized_key = (license_key or "").strip()
     if not normalized_key:
-        return None, "Informe uma chave de licença válida.", "Informe uma chave de licença válida."
-    data, error = _request_key_validation(normalized_key, fingerprint)
-    if error:
-        return data, error, error
-    return data, None, None
+        message = "Informe uma chave de licença válida."
+        return None, message, message
+
+    if _is_legacy_license_key(normalized_key):
+        return _handle_legacy_license_key(normalized_key, fingerprint)
+
+    payload, error, detail = _validate_key_with_keygen(normalized_key, fingerprint)
+    if payload is None:
+        return None, error, detail
+
+    return payload, None, None
 
 
 def save_license_data(license_data: Dict[str, Any], fingerprint: Optional[str] = None) -> None:
@@ -291,26 +389,39 @@ def extract_license_key(data: Optional[Dict[str, Any]]) -> Optional[str]:
 
 def check_license(parent_window: tk.Misc) -> Tuple[bool, Optional[Dict[str, Any]]]:
     fingerprint = get_machine_fingerprint()
-    stored_data = load_license_data()
+    stored_data = load_license_data(fingerprint)
+    stored_key = extract_license_key(stored_data)
+    initial_status: Optional[str] = None
 
-    if stored_data:
-        license_id = stored_data.get("data", {}).get("id")
-        if license_id:
-            validation_result = validate_license_with_id(license_id, fingerprint)
-            if validation_result and validation_result.get("meta", {}).get("valid"):
-                set_license_as_valid()
-                return True, validation_result
+    if stored_key:
+        payload, error, detail = validate_license_key(stored_key, fingerprint)
+        if payload and payload.get("meta", {}).get("valid"):
+            save_license_data(payload)
+            set_license_as_valid()
+            return True, payload
+        if error:
+            print("Falha na revalidação:", error)
+        initial_status = ""
 
     while True:
-        dialog = CustomLicenseDialog(parent_window)
-        license_key_input = (dialog.result or "").strip()
+        dialog = CustomLicenseDialog(
+            parent_window,
+            fingerprint,
+            activation_timeout=None,
+            initial_status=initial_status,
+        )
+        dialog_result = getattr(dialog, "result", None)
+        if dialog_result is None:
+            dialog_result = getattr(dialog, "result_data", None)
+        license_key_input = (dialog_result or "").strip()
 
         if not license_key_input:
-            messagebox.showwarning(
-                "Ativação Necessária",
-                "É necessária uma chave de licença para usar este programa.",
-                parent=parent_window,
-            )
+            if parent_window is not None:
+                messagebox.showwarning(
+                    "Ativação Necessária",
+                    "É necessária uma chave de licença para usar este programa.",
+                    parent=parent_window,
+                )
             return False, None
 
         parent_window.config(cursor="watch")
@@ -320,13 +431,21 @@ def check_license(parent_window: tk.Misc) -> Tuple[bool, Optional[Dict[str, Any]
             parent_window.update()
 
         parent_window.config(cursor="")
-        activation_data, message = future.result()
+        activation_data, message, error_code = future.result()
 
         if activation_data:
             save_license_data(activation_data)
             set_license_as_valid()
             messagebox.showinfo("Sucesso", message, parent=parent_window)
             return True, activation_data
+
+        if error_code == "migration_required":
+            messagebox.showerror(
+                "Licença Incompatível",
+                MIGRATION_REQUIRED_MESSAGE,
+                parent=parent_window,
+            )
+            return False, None
 
         retry = messagebox.askretrycancel(
             "Falha na Ativação",
