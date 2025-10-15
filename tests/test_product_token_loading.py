@@ -111,14 +111,22 @@ def test_load_license_secrets_from_inline_config(monkeypatch, tmp_path):
     assert credentials.api_base_url == "https://example.test/accounts/inline-account"
 
 
-def test_missing_configuration_raises(monkeypatch):
+def test_missing_configuration_uses_embedded_defaults(monkeypatch):
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
     monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
     monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
 
-    with pytest.raises(secrets.SecretLoaderError):
-        secrets.load_license_secrets()
+    monkeypatch.setattr(secrets, "_load_bundle_from_local_installation", lambda: None)
+
+    credentials = secrets.load_license_secrets()
+
+    assert credentials.account_id == secrets.DEFAULT_LICENSE_CREDENTIALS["account_id"]
+    assert credentials.product_token == secrets.DEFAULT_LICENSE_CREDENTIALS["product_token"]
+    assert (
+        credentials.api_base_url
+        == secrets.DEFAULT_LICENSE_CREDENTIALS["api_base_url"]
+    )
 
 
 def test_license_checker_exposes_cached_credentials(monkeypatch):
@@ -142,6 +150,25 @@ def test_license_checker_exposes_cached_credentials(monkeypatch):
     assert module.get_product_token() == "updated-token"
 
 
+def test_embedded_fallback_is_used_when_env_cleared(monkeypatch):
+    monkeypatch.setenv("KEYGEN_LICENSE_BUNDLE", "")
+    monkeypatch.setenv("KEYGEN_LICENSE_BUNDLE_PATH", "")
+    monkeypatch.setenv("KEYGEN_ACCOUNT_ID", "")
+    monkeypatch.setenv("KEYGEN_PRODUCT_TOKEN", "")
+    monkeypatch.setenv("KEYGEN_API_BASE_URL", "")
+
+    monkeypatch.setattr(secrets, "_load_bundle_from_local_installation", lambda: None)
+
+    credentials = secrets.load_license_secrets()
+
+    assert credentials.account_id == secrets.DEFAULT_LICENSE_CREDENTIALS["account_id"]
+    assert credentials.product_token == secrets.DEFAULT_LICENSE_CREDENTIALS["product_token"]
+    assert (
+        credentials.api_base_url
+        == secrets.DEFAULT_LICENSE_CREDENTIALS["api_base_url"]
+    )
+
+
 def test_validate_license_with_missing_credentials(monkeypatch):
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
@@ -149,6 +176,13 @@ def test_validate_license_with_missing_credentials(monkeypatch):
     monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
 
     module = _reload_license_checker()
+    module.get_license_service_credentials.cache_clear()
+
+    def _raise_secret_loader_error():
+        raise secrets.SecretLoaderError("Credenciais indisponíveis")
+
+    monkeypatch.setattr(module, "load_license_secrets", _raise_secret_loader_error)
+    module.get_license_service_credentials.cache_clear()
 
     payload, error = module.validate_license_with_id("any", "fingerprint")
 
@@ -163,6 +197,13 @@ def test_activate_new_license_with_missing_credentials(monkeypatch):
     monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
 
     module = _reload_license_checker()
+    module.get_license_service_credentials.cache_clear()
+
+    def _raise_secret_loader_error():
+        raise secrets.SecretLoaderError("Credenciais indisponíveis")
+
+    monkeypatch.setattr(module, "load_license_secrets", _raise_secret_loader_error)
+    module.get_license_service_credentials.cache_clear()
 
     activation_data, message = module.activate_new_license("token", "fingerprint")
 
