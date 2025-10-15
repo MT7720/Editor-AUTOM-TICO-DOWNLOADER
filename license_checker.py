@@ -149,13 +149,36 @@ class CustomLicenseDialog(ttk.Toplevel):
 
         self._update_status(initial_status or "", "secondary")
 
+        parent_state = None
+        parent_was_withdrawn = False
+        parent_was_iconified = False
+        if isinstance(parent, tk.Tk) or isinstance(parent, tk.Toplevel):
+            try:
+                parent_state = parent.state()
+            except tk.TclError:
+                parent_state = None
+
+            if parent_state == "withdrawn":
+                parent.deiconify()
+                parent_was_withdrawn = True
+            elif parent_state == "iconic":
+                parent.deiconify()
+                parent_was_iconified = True
+
+            parent.update_idletasks()
+
         self.update_idletasks()
-        parent_x, parent_y = parent.winfo_x(), parent.winfo_y()
-        parent_w, parent_h = parent.winfo_width(), parent.winfo_height()
         dialog_w, dialog_h = self.winfo_width(), self.winfo_height()
-        x = parent_x + (parent_w - dialog_w) // 2
-        y = parent_y + (parent_h - dialog_h) // 2
+        screen_w, screen_h = self.winfo_screenwidth(), self.winfo_screenheight()
+        x = max((screen_w - dialog_w) // 2, 0)
+        y = max((screen_h - dialog_h) // 2, 0)
         self.geometry(f"+{x}+{y}")
+
+        if isinstance(parent, tk.Tk) or isinstance(parent, tk.Toplevel):
+            if parent_was_withdrawn:
+                parent.withdraw()
+            elif parent_was_iconified:
+                parent.iconify()
         self.grab_set()
         self.wait_window(self)
 
