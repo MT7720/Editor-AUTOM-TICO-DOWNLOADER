@@ -10,8 +10,9 @@ import sys
 import time
 import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 
 import requests
 import ttkbootstrap as ttk
@@ -22,6 +23,7 @@ from ttkbootstrap.constants import *
 # --- NOVO IMPORT ---
 # Importa a função para atualizar o estado da licença
 from security.license_manager import set_license_as_valid
+from security import license_authority
 from security.secrets import LicenseServiceCredentials, SecretLoaderError, load_license_secrets
 
 
@@ -46,6 +48,207 @@ def resource_path(relative_path):
 
 ICON_FILE = resource_path("icone.ico")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2)
+
+
+MIGRATION_REQUIRED_MESSAGE = (
+    "Esta chave de licença utiliza o formato antigo e precisa ser migrada pelo "
+    "suporte antes de poder ser utilizada."
+)
+LEGACY_LICENSE_MIGRATION_URL_ENV_VAR = "EDITOR_AUTOMATICO_LEGACY_MIGRATION_URL"
+LEGACY_LICENSE_MIGRATION_TOKEN_ENV_VAR = "EDITOR_AUTOMATICO_LEGACY_MIGRATION_TOKEN"
+LEGACY_LICENSE_MIGRATION_TIMEOUT = 10
+LICENSE_REVOCATION_FILE_ENV_VAR = "EDITOR_AUTOMATICO_LICENSE_REVOCATIONS"
+LICENSE_REVOCATION_CACHE_TTL = 60
+
+
+_REVOCATION_CACHE: Dict[str, Any] = {
+    "serials": set(),
+    "path": None,
+    "loaded_at": 0.0,
+    "mtime": None,
+}
+
+
+def _clear_revocation_cache() -> None:
+    _REVOCATION_CACHE.update({
+        "serials": set(),
+        "path": None,
+        "loaded_at": 0.0,
+        "mtime": None,
+    })
+
+
+def _load_revocation_serials() -> set[str]:
+    path = os.getenv(LICENSE_REVOCATION_FILE_ENV_VAR)
+    if not path:
+        return set()
+
+    try:
+        stat_result = os.stat(path)
+    except OSError:
+        return set()
+
+    cache_valid = (
+        _REVOCATION_CACHE["path"] == path
+        and _REVOCATION_CACHE["mtime"] == stat_result.st_mtime
+        and (time.monotonic() - _REVOCATION_CACHE["loaded_at"]) < LICENSE_REVOCATION_CACHE_TTL
+    )
+    if cache_valid:
+        return set(_REVOCATION_CACHE["serials"])
+
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError):
+        payload = {}
+
+    revoked = payload.get("revoked") if isinstance(payload, dict) else None
+    serials = {str(value) for value in revoked} if isinstance(revoked, list) else set()
+
+    _REVOCATION_CACHE.update(
+        {
+            "serials": set(serials),
+            "path": path,
+            "mtime": stat_result.st_mtime,
+            "loaded_at": time.monotonic(),
+        }
+    )
+    return serials
+
+
+def _parse_claims_timestamp(timestamp: str) -> datetime:
+    normalized = timestamp.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+
+
+def _looks_like_compact_token(value: str) -> bool:
+    return value.count(".") == 1
+
+
+def _evaluate_license_token(
+    token: str, fingerprint: str
+) -> Tuple[Optional[Dict[str, Any]], str, str]:
+    """Return (claims, status, detail) for a compact license token."""
+
+    try:
+        claims = license_authority.verify_token(token)
+    except ValueError as exc:
+        return None, "invalid", f"Token de licença inválido: {exc}"
+
+    serial = str(claims.get("serial", "") or "").strip()
+    revoked_serials = _load_revocation_serials()
+    if serial and serial in revoked_serials:
+        return claims, "revoked", "Esta licença foi revogada pelo emissor."
+
+    token_fingerprint = str(claims.get("fingerprint", "") or "").strip()
+    if token_fingerprint and token_fingerprint != fingerprint:
+        return claims, "fingerprint_mismatch", (
+            "O fingerprint associado à licença não corresponde a esta máquina."
+        )
+
+    expiry_raw = claims.get("exp") or claims.get("expiry")
+    if isinstance(expiry_raw, str):
+        try:
+            expiry = _parse_claims_timestamp(expiry_raw)
+        except ValueError:
+            return claims, "invalid", "Data de expiração inválida no token da licença."
+        if expiry < datetime.now(timezone.utc):
+            return claims, "expired", "A licença encontra-se expirada."
+
+    return claims, "ok", "Licença válida."
+
+
+def _build_activation_payload(
+    token: str, claims: Dict[str, Any], extra_meta: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    meta: Dict[str, Any] = {
+        "valid": True,
+        "key": token,
+        "serial": claims.get("serial"),
+        "seats": claims.get("seats"),
+    }
+    if extra_meta:
+        meta.update(extra_meta)
+
+    return {
+        "meta": meta,
+        "data": {
+            "type": "licenses",
+            "id": claims.get("customer_id"),
+        },
+        "claims": claims,
+    }
+
+
+def _get_delegated_credential(purpose: str) -> Tuple[Optional[str], Optional[str]]:
+    token = os.getenv(LEGACY_LICENSE_MIGRATION_TOKEN_ENV_VAR)
+    if token:
+        return token, None
+
+    try:
+        credentials = get_license_service_credentials()
+    except RuntimeError as exc:
+        return None, str(exc)
+
+    return credentials.product_token, None
+
+
+def _call_migration_service(
+    legacy_key: str, fingerprint: str
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    url = os.getenv(LEGACY_LICENSE_MIGRATION_URL_ENV_VAR)
+    if not url:
+        return None, MIGRATION_REQUIRED_MESSAGE
+
+    delegated_token, error = _get_delegated_credential("legacy_migration")
+    if not delegated_token:
+        detail = (
+            f"{MIGRATION_REQUIRED_MESSAGE} {error}".strip()
+            if error
+            else MIGRATION_REQUIRED_MESSAGE
+        )
+        return None, detail
+
+    headers = {
+        "Authorization": f"Bearer {delegated_token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    payload = {"licenseKey": legacy_key, "fingerprint": fingerprint}
+
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=LEGACY_LICENSE_MIGRATION_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        return None, f"{MIGRATION_REQUIRED_MESSAGE} Erro ao contactar o serviço de migração: {exc}"
+
+    if response.status_code != 200:
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if isinstance(data, dict):
+            detail = data.get("error") or data.get("message") or data.get("detail")
+        else:
+            detail = None
+        detail_message = detail or f"Serviço de migração respondeu com {response.status_code}."
+        return None, f"{MIGRATION_REQUIRED_MESSAGE} Detalhes: {detail_message}"
+
+    try:
+        result = response.json()
+    except ValueError:
+        return None, f"{MIGRATION_REQUIRED_MESSAGE} Resposta inválida do serviço de migração."
+
+    if not isinstance(result, dict) or "token" not in result:
+        return None, f"{MIGRATION_REQUIRED_MESSAGE} Resposta do serviço sem token de licença."
+
+    return result, None
 
 
 @lru_cache(maxsize=1)
@@ -220,7 +423,7 @@ class CustomLicenseDialog(ttk.Toplevel):
 
         if self._future.done():
             try:
-                data, message = self._future.result()
+                data, message, error_code = self._future.result()
             except Exception as exc:  # pragma: no cover - cenário inesperado
                 self._handle_failure(f"Erro inesperado durante a ativação: {exc}")
                 return
@@ -231,7 +434,14 @@ class CustomLicenseDialog(ttk.Toplevel):
                 self.destroy()
                 return
 
-            self._handle_failure(message or "Falha na ativação da licença.")
+            failure_message = message or "Falha na ativação da licença."
+            if error_code == "migration_required":
+                failure_message = (
+                    f"{failure_message}\n{MIGRATION_REQUIRED_MESSAGE}"
+                    if MIGRATION_REQUIRED_MESSAGE not in failure_message
+                    else failure_message
+                )
+            self._handle_failure(failure_message)
             return
 
         if (
@@ -300,6 +510,32 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
     existir (por exemplo, quando o serviço responde ``404`` ou "not found").
     """
 
+    if license_key and isinstance(license_key, str) and _looks_like_compact_token(license_key):
+        claims, status, detail = _evaluate_license_token(license_key, fingerprint)
+        if claims is None and status == "invalid":
+            return None, detail, None
+
+        if claims:
+            meta: Dict[str, Any] = {
+                "valid": status == "ok",
+                "key": license_key,
+                "serial": claims.get("serial"),
+                "seats": claims.get("seats"),
+            }
+            if status != "ok":
+                meta["detail"] = detail
+
+            payload = {
+                "meta": meta,
+                "data": {
+                    "type": "licenses",
+                    "id": claims.get("customer_id", license_id),
+                },
+                "claims": claims,
+            }
+
+            return payload, None, None
+
     try:
         credentials = get_license_service_credentials()
     except RuntimeError as exc:
@@ -359,55 +595,46 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
     return payload, None, None
 
 def activate_new_license(license_key, fingerprint):
-    """ Ativa uma nova licença usando o fluxo simples e funcional do script antigo. """
-    try:
-        credentials = get_license_service_credentials()
-    except RuntimeError as exc:
-        return None, str(exc)
+    """Ativa uma licença no formato moderno ou migra chaves antigas automaticamente."""
 
-    product_token = credentials.product_token
-    headers = {
-        "Content-Type": "application/vnd.api+json",
-        "Accept": "application/vnd.api+json",
-    }
-    payload = {"meta": {"key": license_key}}
-    try:
-        r = requests.post(
-            f"{credentials.api_base_url}/licenses/actions/validate-key",
-            json=payload,
-            headers=headers,
-        )
-        r.raise_for_status()
-        validation_data = r.json()
-        if not validation_data.get("meta", {}).get("valid"):
-            return None, validation_data.get("meta", {}).get("detail", "Chave inválida ou expirada.")
-        license_id = validation_data["data"]["id"]
-    except requests.exceptions.RequestException:
-        return None, "Não foi possível contactar o servidor para validar a chave."
+    normalized_key = (license_key or "").strip()
+    normalized_fingerprint = (fingerprint or "").strip()
 
-    activation_payload = {
-        "data": {
-            "type": "machines",
-            "attributes": {"fingerprint": fingerprint},
-            "relationships": {"license": {"data": {"type": "licenses", "id": license_id}}}
-        }
-    }
-    auth_headers = {"Authorization": f"Bearer {product_token}", **headers}
-    try:
-        r = requests.post(
-            f"{credentials.api_base_url}/machines",
-            json=activation_payload,
-            headers=auth_headers,
-        )
-        r.raise_for_status()
-        # Retorna os dados da validação original para serem salvos, como no script antigo
-        return validation_data, "Ativação bem-sucedida."
-    except requests.exceptions.RequestException as e:
-        if e.response and e.response.status_code == 422:
-            error_detail = e.response.json().get('errors', [{}])[0]
-            if error_detail.get('code') == 'FINGERPRINT_ALREADY_TAKEN':
-                return validation_data, "Máquina já estava ativada."
-        return None, "Não foi possível ativar esta máquina. A licença pode estar em uso ou sem vagas."
+    if not normalized_key:
+        return None, "Informe uma chave de licença válida.", None
+
+    if _looks_like_compact_token(normalized_key):
+        claims, status, detail = _evaluate_license_token(normalized_key, normalized_fingerprint)
+        if status != "ok" or not claims:
+            return None, detail, None
+
+        activation_data = _build_activation_payload(normalized_key, claims)
+        return activation_data, "Licença ativada com sucesso.", None
+
+    migration_result, error_message = _call_migration_service(normalized_key, normalized_fingerprint)
+    if migration_result is None:
+        message = error_message or MIGRATION_REQUIRED_MESSAGE
+        if MIGRATION_REQUIRED_MESSAGE not in message:
+            message = f"{MIGRATION_REQUIRED_MESSAGE} {message}".strip()
+        return None, message, "migration_required"
+
+    token = migration_result.get("token")
+    claims, status, detail = _evaluate_license_token(token, normalized_fingerprint)
+    if status != "ok" or not claims:
+        message = detail
+        if MIGRATION_REQUIRED_MESSAGE not in message:
+            message = f"{MIGRATION_REQUIRED_MESSAGE} {message}".strip()
+        error_code = "migration_required" if status == "invalid" else None
+        return None, message, error_code
+
+    extra_meta = {"legacy_key": normalized_key}
+    if "serial" in migration_result:
+        extra_meta["serial"] = migration_result["serial"]
+    if "seats" in migration_result:
+        extra_meta["seats"] = migration_result["seats"]
+
+    activation_data = _build_activation_payload(token, claims, extra_meta)
+    return activation_data, "Licença migrada com sucesso.", None
 
 
 def save_license_data(license_data, fingerprint):
