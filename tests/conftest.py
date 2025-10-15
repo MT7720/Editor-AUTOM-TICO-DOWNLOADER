@@ -6,8 +6,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-os.environ.setdefault("LICENSE_API_URL", "https://license.test/api")
-os.environ.setdefault("LICENSE_API_TOKEN", "test-token")
+os.environ.setdefault("KEYGEN_ACCOUNT_ID", "test-account")
+os.environ.setdefault("KEYGEN_PRODUCT_TOKEN", "test-token")
 
 
 @pytest.fixture(autouse=True)

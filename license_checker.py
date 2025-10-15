@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
+import requests
 import ttkbootstrap as ttk
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -22,7 +23,6 @@ from ttkbootstrap.constants import *
 
 # --- NOVO IMPORT ---
 # Importa a função para atualizar o estado da licença
-from security import licensing_api
 from security.license_manager import set_license_as_valid
 from security.secrets import LicenseServiceCredentials, SecretLoaderError, load_license_secrets
 
@@ -50,7 +50,7 @@ ICON_FILE = resource_path("icone.ico")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2)
 
 MIGRATION_REQUIRED_MESSAGE = (
-    "Esta versão do Editor Automático aceita apenas chaves emitidas pelo serviço de licenciamento oficial. "
+    "Esta versão do Editor Automático aceita apenas chaves emitidas diretamente pelo Keygen. "
     "Solicite uma chave actualizada no portal oficial para continuar."
 )
 
@@ -67,13 +67,13 @@ def get_api_base_url() -> str:
 
 
 def get_product_token() -> str:
-    return get_license_service_credentials().api_token
+    return get_license_service_credentials().product_token
 
 
 def _validate_key_with_keygen(
     license_key: str, fingerprint: str
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
-    """Comunica com a API de licenciamento da Automático para validar uma chave."""
+    """Comunica com a API do Keygen para validar uma chave de licença."""
 
     normalized_key = (license_key or "").strip()
     normalized_fingerprint = (fingerprint or "").strip()
@@ -86,59 +86,61 @@ def _validate_key_with_keygen(
     except RuntimeError as exc:
         return None, str(exc), None
 
+    headers = {
+        "Authorization": f"Bearer {credentials.product_token}",
+        "Accept": "application/vnd.api+json",
+        "Content-Type": "application/vnd.api+json",
+    }
+    payload: Dict[str, Any] = {
+        "data": {"type": "licenses"},
+        "meta": {"key": normalized_key},
+    }
+    if normalized_fingerprint:
+        payload["meta"]["fingerprint"] = normalized_fingerprint
+
     try:
-        api_response = licensing_api.validate_license_key(
-            base_url=credentials.api_base_url,
-            api_token=credentials.api_token,
-            license_key=normalized_key,
+        response = requests.post(
+            f"{credentials.api_base_url}/licenses/actions/validate-key",
+            json=payload,
+            headers=headers,
+            timeout=10,
         )
-    except licensing_api.LicenseAPINetworkError:
+    except requests.RequestException:
         return None, "Não foi possível contactar o servidor de licenças.", None
-    except licensing_api.LicenseAPIInvalidResponseError:
-        return None, "Resposta inválida do servidor de licenças.", None
-    except licensing_api.LicenseAPIError as exc:
-        return None, str(exc), None
 
-    payload = dict(api_response.payload)
-    meta = payload.get("meta")
-    if not isinstance(meta, dict):
-        meta = {}
+    if response.status_code >= 400:
+        detail = None
+        error_code = None
+        try:
+            errors = response.json().get("errors", [])
+            if errors:
+                detail = errors[0].get("detail")
+                error_code = errors[0].get("code")
+        except (ValueError, AttributeError, IndexError):
+            detail = None
+            error_code = None
 
-    raw_valid = payload.get("valid")
-    if isinstance(raw_valid, bool):
-        valid_flag = raw_valid
-    else:
-        meta_valid = meta.get("valid")
-        valid_flag = meta_valid is True
+        normalized_detail = (detail or "Não foi possível validar a licença.").strip()
+        lowered_code = str(error_code or "").lower()
+        invalid_detail = None
+        if lowered_code in {"license_not_found", "license_key_not_found"}:
+            invalid_detail = normalized_detail
+        elif response.status_code == 404:
+            invalid_detail = normalized_detail
 
-    if api_response.status_code >= 400 or not valid_flag:
-        message = payload.get("message")
-        if isinstance(message, str) and message.strip():
-            normalized_detail = message.strip()
-        else:
-            normalized_detail = "Não foi possível validar a licença."
-        invalid_detail = normalized_detail if not valid_flag or api_response.status_code == 404 else None
         return None, normalized_detail, invalid_detail
 
-    license_data = payload.get("license")
-    result_payload: Dict[str, Any] = {}
-    if isinstance(license_data, dict):
-        result_payload["data"] = license_data
-        result_payload["license"] = license_data
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, "Resposta inválida do servidor de licenças.", None
 
-    merged_meta = dict(meta)
-    merged_meta["key"] = normalized_key
-    merged_meta["valid"] = valid_flag
+    meta = payload.setdefault("meta", {})
+    meta.setdefault("key", normalized_key)
     if normalized_fingerprint:
-        merged_meta.setdefault("fingerprint", normalized_fingerprint)
-    result_payload["meta"] = merged_meta
+        meta.setdefault("fingerprint", normalized_fingerprint)
 
-    result_payload["valid"] = valid_flag
-    message = payload.get("message")
-    if isinstance(message, str):
-        result_payload["message"] = message
-
-    return result_payload, None, None
+    return payload, None, None
 
 
 def extract_license_key(data: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -399,7 +401,7 @@ def _looks_like_legacy_key(license_key: str) -> bool:
 def validate_license_key(
     license_key: Optional[str], fingerprint: str
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
-    """Valida uma chave de licença através do serviço Automático."""
+    """Valida uma chave de licença diretamente no Keygen."""
 
     normalized_key = (license_key or "").strip()
     if not normalized_key:
@@ -417,7 +419,7 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
     return validate_license_key(license_key, fingerprint)
 
 def activate_new_license(license_key, fingerprint):
-    """Solicita a validação da chave diretamente à API oficial de licenças."""
+    """Solicita a validação da chave diretamente à API do Keygen."""
 
     payload, error, invalid_detail = validate_license_key(license_key, fingerprint)
     if payload:
@@ -518,7 +520,7 @@ def check_license(parent_window, activation_timeout=15):
     except SecretLoaderError as exc:
         diagnostic = (
             "Credenciais do serviço de licenças ausentes. "
-            "O instalador oficial injeta LICENSE_SERVICE_BUNDLE automaticamente; "
+            "O instalador oficial injeta KEYGEN_LICENSE_BUNDLE automaticamente; "
             "verifique se o pacote foi construído com o bundle autenticado."
         )
         print("Diagnóstico de licenciamento: " + diagnostic)
