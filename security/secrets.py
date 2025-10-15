@@ -29,10 +29,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+INLINE_OVERRIDE_ENV_VAR = "ALLOW_KEYGEN_CREDENTIAL_OVERRIDE"
+
 __all__ = [
     "LicenseServiceCredentials",
     "SecretLoaderError",
     "load_license_secrets",
+    "is_inline_override_enabled",
+    "persist_inline_credentials",
 ]
 
 
@@ -74,6 +78,17 @@ class LicenseServiceCredentials:
         return cls(account_id=account_id, product_token=product_token, api_base_url=base_url)
 
 
+def is_inline_override_enabled() -> bool:
+    """Indica se a UI pode expor opções internas para modificar credenciais."""
+
+    raw_value = os.getenv(INLINE_OVERRIDE_ENV_VAR)
+    if raw_value is None:
+        return False
+
+    normalized = raw_value.strip().lower()
+    return normalized in {"1", "true", "yes", "on", "habilitar", "enable"}
+
+
 def load_license_secrets() -> LicenseServiceCredentials:
     """Obtém as credenciais do serviço de licenças através de fonte externa."""
 
@@ -94,6 +109,59 @@ def load_license_secrets() -> LicenseServiceCredentials:
     _ensure_payload_is_authenticated(payload)
 
     return LicenseServiceCredentials.from_payload(payload)
+
+
+def persist_inline_credentials(
+    account_id: str,
+    product_token: str,
+    api_base_url: Optional[str] = None,
+) -> tuple[bool, str]:
+    """Actualiza os campos inline no ficheiro de configuração de forma controlada."""
+
+    if not is_inline_override_enabled():
+        return (
+            False,
+            "Esta build está em modo restrito; utilize o instalador oficial para actualizar as credenciais.",
+        )
+
+    normalized_account_id = (account_id or "").strip()
+    normalized_product_token = (product_token or "").strip()
+    normalized_base_url = (api_base_url or "").strip()
+
+    payload: Dict[str, Any] = {
+        "account_id": normalized_account_id,
+        "product_token": normalized_product_token,
+    }
+
+    if normalized_base_url:
+        payload["api_base_url"] = normalized_base_url
+
+    try:
+        credentials = LicenseServiceCredentials.from_payload(payload)
+    except SecretLoaderError as exc:
+        return False, str(exc)
+
+    config_path, config_data = _load_config_data()
+    updated_config = dict(config_data)
+    updated_config["license_account_id"] = credentials.account_id
+    updated_config["license_product_token"] = credentials.product_token
+    updated_config["license_api_base_url"] = credentials.api_base_url
+
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with config_path.open("w", encoding="utf-8") as config_file:
+            json.dump(updated_config, config_file, indent=2, ensure_ascii=False)
+    except OSError as exc:
+        return (
+            False,
+            "Não foi possível guardar as credenciais no ficheiro de configuração: "
+            f"{exc}",
+        )
+
+    if hasattr(_load_config_data, "cache_clear"):
+        _load_config_data.cache_clear()
+
+    return True, "Credenciais do Keygen actualizadas com sucesso."
 
 
 def _load_bundle_from_env() -> Optional[Dict[str, Any]]:

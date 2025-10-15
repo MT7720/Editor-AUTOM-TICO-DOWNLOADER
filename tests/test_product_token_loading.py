@@ -219,6 +219,70 @@ def test_missing_configuration_raises_error(monkeypatch):
     assert "keygen_license_bundle" in lowered
 
 
+def test_inline_override_blocked_in_restricted_mode(monkeypatch, tmp_path):
+    config_path = tmp_path / "video_editor_config.json"
+    original_payload = {
+        "license_account_id": "official-account",
+        "license_product_token": "official-token",
+        "license_api_base_url": "https://api.keygen.sh/v1/accounts/official-account",
+    }
+    config_path.write_text(json.dumps(original_payload), encoding="utf-8")
+
+    monkeypatch.setattr(secrets, "_iter_config_candidates", lambda: (config_path,))
+    monkeypatch.delenv(secrets.INLINE_OVERRIDE_ENV_VAR, raising=False)
+    for env_var in (
+        "KEYGEN_LICENSE_BUNDLE",
+        "KEYGEN_LICENSE_BUNDLE_PATH",
+        "KEYGEN_ACCOUNT_ID",
+        "KEYGEN_PRODUCT_TOKEN",
+        "KEYGEN_API_BASE_URL",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
+    success, message = secrets.persist_inline_credentials("new-account", "new-token")
+
+    assert success is False
+    assert "modo restrito" in message.lower()
+
+    current_config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert current_config["license_account_id"] == "official-account"
+    assert current_config["license_product_token"] == "official-token"
+
+    credentials = secrets.load_license_secrets()
+    assert credentials.account_id == "official-account"
+    assert credentials.product_token == "official-token"
+
+
+def test_inline_override_allowed_for_internal_builds(monkeypatch, tmp_path):
+    config_path = tmp_path / "video_editor_config.json"
+    config_path.write_text(json.dumps({}, indent=2), encoding="utf-8")
+
+    monkeypatch.setattr(secrets, "_iter_config_candidates", lambda: (config_path,))
+    monkeypatch.setenv(secrets.INLINE_OVERRIDE_ENV_VAR, "1")
+    for env_var in (
+        "KEYGEN_LICENSE_BUNDLE",
+        "KEYGEN_LICENSE_BUNDLE_PATH",
+        "KEYGEN_ACCOUNT_ID",
+        "KEYGEN_PRODUCT_TOKEN",
+        "KEYGEN_API_BASE_URL",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
+    success, message = secrets.persist_inline_credentials(
+        "internal-account",
+        "internal-token",
+        "https://example.internal/accounts/internal-account",
+    )
+
+    assert success is True
+    assert "actualizadas" in message.lower()
+
+    credentials = secrets.load_license_secrets()
+    assert credentials.account_id == "internal-account"
+    assert credentials.product_token == "internal-token"
+    assert credentials.api_base_url == "https://example.internal/accounts/internal-account"
+
+
 def test_license_checker_exposes_cached_credentials(monkeypatch):
     monkeypatch.setenv("KEYGEN_ACCOUNT_ID", "cached-account")
     monkeypatch.setenv("KEYGEN_PRODUCT_TOKEN", "cached-token")

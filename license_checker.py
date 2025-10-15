@@ -24,7 +24,13 @@ from ttkbootstrap.constants import *
 # --- NOVO IMPORT ---
 # Importa a função para atualizar o estado da licença
 from security.license_manager import set_license_as_valid
-from security.secrets import LicenseServiceCredentials, SecretLoaderError, load_license_secrets
+from security.secrets import (
+    LicenseServiceCredentials,
+    SecretLoaderError,
+    is_inline_override_enabled,
+    load_license_secrets,
+    persist_inline_credentials,
+)
 
 
 class LicenseTamperedError(Exception):
@@ -225,6 +231,14 @@ class CustomLicenseDialog(ttk.Toplevel):
         )
         self.status_label.pack(fill=X, pady=(0, 10))
 
+        self._internal_account_var: Optional[tk.StringVar] = None
+        self._internal_product_var: Optional[tk.StringVar] = None
+        self._internal_base_url_var: Optional[tk.StringVar] = None
+        self._internal_status_label: Optional[ttk.Label] = None
+
+        if is_inline_override_enabled():
+            self._build_internal_credentials_panel(main_frame)
+
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill="x")
         ttk.Frame(button_frame).pack(side=LEFT, expand=True)
@@ -360,6 +374,99 @@ class CustomLicenseDialog(ttk.Toplevel):
         self._timeout_notified = False
         self._toggle_inputs(True)
         self._update_status(message, "danger")
+
+    def _build_internal_credentials_panel(self, parent: ttk.Frame) -> None:
+        separator = ttk.Separator(parent, orient=HORIZONTAL)
+        separator.pack(fill=X, pady=(18, 10))
+
+        advanced_frame = ttk.LabelFrame(
+            parent,
+            text="Credenciais do Keygen (uso interno)",
+            padding=(12, 10),
+        )
+        advanced_frame.pack(fill=X)
+
+        info_label = ttk.Label(
+            advanced_frame,
+            text=(
+                "Disponível apenas para equipas internas. Alterar estes valores sem autorização "
+                "pode invalidar activações."
+            ),
+            wraplength=420,
+            justify=LEFT,
+            font=("Segoe UI", 9),
+        )
+        info_label.pack(fill=X, pady=(0, 8))
+
+        current_account = ""
+        current_product = ""
+        current_base_url = ""
+
+        try:
+            credentials = get_license_service_credentials()
+        except Exception:  # pragma: no cover - apenas para diagnósticos internos
+            credentials = None
+
+        if credentials:
+            current_account = credentials.account_id
+            current_product = credentials.product_token
+            current_base_url = credentials.api_base_url
+
+        self._internal_account_var = tk.StringVar(value=current_account)
+        self._internal_product_var = tk.StringVar(value=current_product)
+        self._internal_base_url_var = tk.StringVar(value=current_base_url)
+
+        account_frame = ttk.Frame(advanced_frame)
+        account_frame.pack(fill=X, pady=(0, 6))
+        ttk.Label(account_frame, text="Account ID:").pack(anchor=W)
+        ttk.Entry(account_frame, textvariable=self._internal_account_var).pack(fill=X)
+
+        product_frame = ttk.Frame(advanced_frame)
+        product_frame.pack(fill=X, pady=(0, 6))
+        ttk.Label(product_frame, text="Product Token:").pack(anchor=W)
+        ttk.Entry(product_frame, textvariable=self._internal_product_var, show="•").pack(fill=X)
+
+        base_url_frame = ttk.Frame(advanced_frame)
+        base_url_frame.pack(fill=X, pady=(0, 8))
+        ttk.Label(base_url_frame, text="API Base URL (opcional):").pack(anchor=W)
+        ttk.Entry(base_url_frame, textvariable=self._internal_base_url_var).pack(fill=X)
+
+        action_frame = ttk.Frame(advanced_frame)
+        action_frame.pack(fill=X)
+
+        save_button = ttk.Button(
+            action_frame,
+            text="Guardar credenciais",
+            bootstyle="primary",
+            command=self._on_save_internal_credentials,
+        )
+        save_button.pack(side=LEFT)
+
+        self._internal_status_label = ttk.Label(
+            advanced_frame,
+            text="",
+            wraplength=420,
+            justify=LEFT,
+            font=("Segoe UI", 9),
+        )
+        self._internal_status_label.pack(fill=X, pady=(6, 0))
+
+    def _on_save_internal_credentials(self) -> None:
+        if not self._internal_account_var or not self._internal_product_var:
+            return
+
+        account_id = (self._internal_account_var.get() or "").strip()
+        product_token = (self._internal_product_var.get() or "").strip()
+        base_url = (self._internal_base_url_var.get() or "").strip() if self._internal_base_url_var else None
+
+        success, message = persist_inline_credentials(account_id, product_token, base_url)
+
+        if self._internal_status_label is not None:
+            style = "success" if success else "danger"
+            self._internal_status_label.configure(text=message, bootstyle=style)
+
+        if success and hasattr(get_license_service_credentials, "cache_clear"):
+            get_license_service_credentials.cache_clear()
 
     def on_cancel(self, event=None):
         if self._future is not None and not self._future.done():
