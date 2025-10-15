@@ -67,8 +67,8 @@ def test_activate_new_license_blocks_revoked_serial(configure_revocation_cache):
     )
 
     assert activation_data is None
-    assert error_code is None
-    assert "revogad" in message.lower()
+    assert error_code == "migration_required"
+    assert license_checker.MIGRATION_REQUIRED_MESSAGE in message
 
 
 def test_activate_new_license_requires_matching_fingerprint():
@@ -79,31 +79,30 @@ def test_activate_new_license_requires_matching_fingerprint():
     )
 
     assert activation_data is None
-    assert error_code is None
-    assert "não corresponde" in message.lower()
+    assert error_code == "migration_required"
+    assert license_checker.MIGRATION_REQUIRED_MESSAGE in message
 
 
 def test_validate_license_detects_revocation(configure_revocation_cache):
     revocation_file = configure_revocation_cache
     token = _valid_token("fingerprint", serial="serial-42")
 
-    payload, error, invalid_detail = license_checker.validate_license_with_id(
-        "cust-1", "fingerprint", token
+    payload, error, invalid_detail = license_checker.validate_license_key(
+        token, "fingerprint"
     )
-    assert error is None
-    assert invalid_detail is None
-    assert payload["meta"]["valid"] is True
+    assert payload is None
+    assert error == license_checker.MIGRATION_REQUIRED_MESSAGE
+    assert invalid_detail == "migration_required"
 
     revocation_file.write_text(json.dumps({"revoked": ["serial-42"]}))
     license_checker._clear_revocation_cache()
 
-    payload, error, invalid_detail = license_checker.validate_license_with_id(
-        "cust-1", "fingerprint", token
+    payload, error, invalid_detail = license_checker.validate_license_key(
+        token, "fingerprint"
     )
-    assert error is None
-    assert invalid_detail is None
-    assert payload["meta"]["valid"] is False
-    assert "revogad" in payload["meta"]["detail"].lower()
+    assert payload is None
+    assert error == license_checker.MIGRATION_REQUIRED_MESSAGE
+    assert invalid_detail == "migration_required"
 
 
 def test_check_license_dialog_starts_blank_when_revalidation_fails(monkeypatch):
@@ -114,11 +113,11 @@ def test_check_license_dialog_starts_blank_when_revalidation_fails(monkeypatch):
         lambda fp: {"data": {"id": "license-id"}, "meta": {"key": "stored"}},
     )
 
-    def fake_validate(license_id, fingerprint, license_key):
-        assert license_id == "license-id"
+    def fake_validate(license_key, fingerprint):
+        assert license_key == "stored"
         return None, "Falha na revalidação", None
 
-    monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
+    monkeypatch.setattr(license_checker, "validate_license_key", fake_validate)
     monkeypatch.setattr(license_checker, "load_license_secrets", lambda: None)
 
     logged_messages = []
@@ -163,13 +162,13 @@ def test_license_not_found_triggers_termination(monkeypatch):
     monkeypatch.setattr(license_checker, "get_machine_fingerprint", lambda: "fingerprint")
     monkeypatch.setattr(
         license_checker,
-        "validate_license_with_id",
+        "validate_license_key",
         lambda *args, **kwargs: (None, None, "Licença não encontrada"),
     )
 
     app = VideoEditorApp.__new__(VideoEditorApp)
     app.root = DummyRoot()
-    app._license_id = "license-123"
+    app._license_key = "stored-key"
     app._license_fingerprint = "fingerprint"
     app._license_check_job = None
     app._license_check_failures = 0

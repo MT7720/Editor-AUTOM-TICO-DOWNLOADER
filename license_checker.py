@@ -4,11 +4,13 @@ import hashlib
 import json
 import os
 import platform
+import re
 import secrets
 import subprocess
 import sys
 import time
 import tkinter as tk
+from tkinter import messagebox
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
@@ -46,6 +48,11 @@ def resource_path(relative_path):
 
 ICON_FILE = resource_path("icone.ico")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2)
+
+MIGRATION_REQUIRED_MESSAGE = (
+    "Esta versão do Editor Automático aceita apenas chaves emitidas diretamente pelo Keygen. "
+    "Solicite uma chave actualizada no portal oficial para continuar."
+)
 
 
 @lru_cache(maxsize=1)
@@ -134,6 +141,29 @@ def _validate_key_with_keygen(
         meta.setdefault("fingerprint", normalized_fingerprint)
 
     return payload, None, None
+
+
+def extract_license_key(data: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Extrai a chave de licença das diferentes estruturas de cache suportadas."""
+
+    if not isinstance(data, dict):
+        return None
+
+    meta = data.get("meta")
+    if isinstance(meta, dict):
+        key = meta.get("key")
+        if isinstance(key, str) and key.strip():
+            return key.strip()
+
+    raw_key = data.get("key")
+    if isinstance(raw_key, str) and raw_key.strip():
+        return raw_key.strip()
+
+    payload = data.get("payload")
+    if isinstance(payload, dict):
+        return extract_license_key(payload)
+
+    return None
 
 
 class CustomLicenseDialog(ttk.Toplevel):
@@ -362,18 +392,43 @@ def get_machine_fingerprint():
         identifier = f"{platform.system()}-{platform.node()}-{platform.machine()}"
     return hashlib.sha256(identifier.encode()).hexdigest()
 
+def _looks_like_legacy_key(license_key: str) -> bool:
+    if "." in license_key:
+        return True
+    normalized = license_key.replace("-", "").replace(" ", "")
+    if not normalized:
+        return False
+    if not normalized.isalnum():
+        return False
+    # Formato típico dos tokens antigos: 4 blocos de 4 caracteres.
+    legacy_pattern = re.compile(r"^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3,}$")
+    return bool(legacy_pattern.match(license_key.upper()))
+
+
+def validate_license_key(
+    license_key: Optional[str], fingerprint: str
+) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
+    """Valida uma chave de licença diretamente no Keygen."""
+
+    normalized_key = (license_key or "").strip()
+    if not normalized_key:
+        return None, "Informe uma chave de licença válida.", None
+
+    if _looks_like_legacy_key(normalized_key):
+        return None, MIGRATION_REQUIRED_MESSAGE, "migration_required"
+
+    return _validate_key_with_keygen(normalized_key, fingerprint)
+
+
 def validate_license_with_id(license_id, fingerprint, license_key=None):
-    """Mantém compatibilidade com chamadas antigas revalidando pela chave."""
+    """Compatibilidade retroativa: ignora o ID e valida apenas pela chave."""
 
-    if not license_key:
-        return None, "A chave de licença armazenada não está disponível.", None
-
-    return _validate_key_with_keygen(license_key, fingerprint)
+    return validate_license_key(license_key, fingerprint)
 
 def activate_new_license(license_key, fingerprint):
     """Solicita a validação da chave diretamente à API do Keygen."""
 
-    payload, error, invalid_detail = _validate_key_with_keygen(license_key, fingerprint)
+    payload, error, invalid_detail = validate_license_key(license_key, fingerprint)
     if payload:
         meta = payload.setdefault("meta", {})
         meta.setdefault("valid", True)
@@ -445,13 +500,15 @@ def check_license(parent_window, activation_timeout=15):
         )
 
     if stored_data:
-        license_id = stored_data.get("data", {}).get("id") if isinstance(stored_data, dict) else None
-        license_key = stored_data.get("meta", {}).get("key") if isinstance(stored_data, dict) else None
+        license_key = extract_license_key(stored_data)
         if license_key:
-            validation_result, error, invalid_detail = validate_license_with_id(license_id, fingerprint, license_key)
+            validation_result, error, invalid_detail = validate_license_key(license_key, fingerprint)
             if invalid_detail:
+                detail_message = invalid_detail
+                if invalid_detail == "migration_required":
+                    detail_message = MIGRATION_REQUIRED_MESSAGE
                 initial_status_messages.append(
-                    f"A licença armazenada deixou de ser válida: {invalid_detail}"
+                    f"A licença armazenada deixou de ser válida: {detail_message}"
                 )
             elif error:
                 initial_status_messages.append(
