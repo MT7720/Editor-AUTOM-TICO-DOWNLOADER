@@ -1,18 +1,18 @@
 """Carregamento de segredos sem embutir credenciais no código-fonte.
 
-Este módulo deixa de utilizar a ofuscação com XOR e passa a depender de um
-canal autenticado (por exemplo, o *token broker* interno ou o sistema de CI)
-para entregar os segredos em tempo de execução. Os valores podem ser
-fornecidos via `KEYGEN_LICENSE_BUNDLE` (JSON codificado em Base64), via ficheiro
-referenciado por `KEYGEN_LICENSE_BUNDLE_PATH` ou através de variáveis de
-ambiente individuais.
+As credenciais agora são obtidas a partir do serviço proprietário da Automático
+e não dependem mais do Keygen. O módulo continua a exigir um canal autenticado
+para distribuir os segredos em tempo de execução. Os valores podem ser
+fornecidos via ``LICENSE_SERVICE_BUNDLE`` (JSON codificado em Base64), via
+ficheiro referenciado por ``LICENSE_SERVICE_BUNDLE_PATH`` ou através das
+variáveis de ambiente ``LICENSE_API_URL`` e ``LICENSE_API_TOKEN``.
 
 Para produzir o bundle assinado, utilize o serviço interno responsável pela
-gestão das credenciais. O bundle deve incluir pelo menos os campos
-`account_id`, `product_token` e opcionalmente `api_base_url`, juntamente com
-metadados de auditoria (por exemplo, `issued_at`, `expires_at`, `proof`). O
-cliente valida a integridade dos dados (estrutura, permissões e presença da
-prova) antes de disponibilizá-los para o restante da aplicação.
+gestão das credenciais. O bundle deve incluir os campos ``api_token`` e
+``api_base_url`` (ou ``api_url``), juntamente com metadados de auditoria (por
+exemplo, ``issued_at``, ``expires_at``, ``proof``). O cliente valida a
+integridade dos dados (estrutura, permissões e presença da prova) antes de
+disponibilizá-los para o restante da aplicação.
 """
 
 from __future__ import annotations
@@ -42,36 +42,34 @@ class SecretLoaderError(RuntimeError):
 
 @dataclass(frozen=True)
 class LicenseServiceCredentials:
-    """Container imutável para as credenciais utilizadas na API do Keygen."""
+    """Container imutável para as credenciais utilizadas na API de licenças."""
 
-    account_id: str
-    product_token: str
     api_base_url: str
+    api_token: str
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "LicenseServiceCredentials":
         """Valida o dicionário carregado e devolve uma instância pronta."""
 
         try:
-            account_id = payload["account_id"].strip()
-            product_token = payload["product_token"].strip()
+            api_token = payload["api_token"].strip()
         except KeyError as exc:  # pragma: no cover - mensagem específica
             raise SecretLoaderError(
                 f"Campo obrigatório ausente no pacote de segredos: {exc.args[0]}"
             ) from exc
 
-        if not account_id or not product_token:
+        if not api_token:
+            raise SecretLoaderError("O valor de 'api_token' não pode estar vazio.")
+
+        raw_base_url = payload.get("api_base_url") or payload.get("api_url")
+        if not isinstance(raw_base_url, str) or not raw_base_url.strip():
             raise SecretLoaderError(
-                "Os valores de 'account_id' e 'product_token' não podem estar vazios."
+                "O pacote de segredos deve incluir 'api_base_url' ou 'api_url'."
             )
 
-        base_url = payload.get("api_base_url")
-        if base_url:
-            base_url = base_url.rstrip("/")
-        else:
-            base_url = f"https://api.keygen.sh/v1/accounts/{account_id}"
+        base_url = raw_base_url.strip().rstrip("/")
 
-        return cls(account_id=account_id, product_token=product_token, api_base_url=base_url)
+        return cls(api_base_url=base_url, api_token=api_token)
 
 
 def load_license_secrets() -> LicenseServiceCredentials:
@@ -87,8 +85,8 @@ def load_license_secrets() -> LicenseServiceCredentials:
     if not payload:
         raise SecretLoaderError(
             "As credenciais do serviço de licenças não foram provisionadas. "
-            "Configure KEYGEN_LICENSE_BUNDLE, KEYGEN_LICENSE_BUNDLE_PATH ou as "
-            "variáveis KEYGEN_ACCOUNT_ID/KEYGEN_PRODUCT_TOKEN."
+            "Configure LICENSE_SERVICE_BUNDLE, LICENSE_SERVICE_BUNDLE_PATH ou as "
+            "variáveis LICENSE_API_URL/LICENSE_API_TOKEN."
         )
 
     _ensure_payload_is_authenticated(payload)
@@ -97,7 +95,7 @@ def load_license_secrets() -> LicenseServiceCredentials:
 
 
 def _load_bundle_from_env() -> Optional[Dict[str, Any]]:
-    bundle = os.getenv("KEYGEN_LICENSE_BUNDLE")
+    bundle = os.getenv("LICENSE_SERVICE_BUNDLE")
     if not bundle:
         return None
 
@@ -105,48 +103,42 @@ def _load_bundle_from_env() -> Optional[Dict[str, Any]]:
         raw = base64.b64decode(bundle)
     except (ValueError, binascii.Error) as exc:
         raise SecretLoaderError(
-            "KEYGEN_LICENSE_BUNDLE não contém Base64 válido."
+            "LICENSE_SERVICE_BUNDLE não contém Base64 válido."
         ) from exc
 
     try:
         payload = json.loads(raw.decode("utf-8"))
     except ValueError as exc:
-        raise SecretLoaderError("KEYGEN_LICENSE_BUNDLE não contém JSON válido.") from exc
+        raise SecretLoaderError("LICENSE_SERVICE_BUNDLE não contém JSON válido.") from exc
 
     return payload
 
 
 def _load_bundle_from_file() -> Optional[Dict[str, Any]]:
-    path = os.getenv("KEYGEN_LICENSE_BUNDLE_PATH")
+    path = os.getenv("LICENSE_SERVICE_BUNDLE_PATH")
     if not path:
         return None
 
     file_path = Path(path)
     if not file_path.is_file():
         raise SecretLoaderError(
-            f"O ficheiro referenciado por KEYGEN_LICENSE_BUNDLE_PATH não existe: {path}"
+            f"O ficheiro referenciado por LICENSE_SERVICE_BUNDLE_PATH não existe: {path}"
         )
 
     return _load_bundle_from_disk(file_path)
 
 
 def _load_from_env_variables() -> Optional[Dict[str, Any]]:
-    account_id = os.getenv("KEYGEN_ACCOUNT_ID")
-    product_token = os.getenv("KEYGEN_PRODUCT_TOKEN")
-    api_base_url = os.getenv("KEYGEN_API_BASE_URL")
+    api_base_url = os.getenv("LICENSE_API_URL")
+    api_token = os.getenv("LICENSE_API_TOKEN")
 
-    if not account_id or not product_token:
+    if not api_token:
         return None
 
-    payload: Dict[str, Any] = {
-        "account_id": account_id,
-        "product_token": product_token,
-    }
+    if not api_base_url:
+        return None
 
-    if api_base_url:
-        payload["api_base_url"] = api_base_url
-
-    return payload
+    return {"api_base_url": api_base_url, "api_token": api_token}
 
 
 def _load_bundle_from_local_installation() -> Optional[Dict[str, Any]]:
@@ -259,28 +251,19 @@ def _iter_config_candidates() -> tuple[Path, ...]:
 def _extract_inline_credentials(config_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Obtém credenciais definidas diretamente no ficheiro de configuração."""
 
-    account_id = config_data.get("license_account_id")
-    product_token = config_data.get("license_product_token")
+    api_token = config_data.get("license_api_token")
+    api_url = config_data.get("license_api_url")
 
-    if not isinstance(account_id, str) or not isinstance(product_token, str):
+    if not isinstance(api_token, str) or not isinstance(api_url, str):
         return None
 
-    account_id = account_id.strip()
-    product_token = product_token.strip()
+    api_token = api_token.strip()
+    api_url = api_url.strip()
 
-    if not account_id or not product_token:
+    if not api_token or not api_url:
         return None
 
-    payload: Dict[str, Any] = {
-        "account_id": account_id,
-        "product_token": product_token,
-    }
-
-    api_base_url = config_data.get("license_api_base_url")
-    if isinstance(api_base_url, str) and api_base_url.strip():
-        payload["api_base_url"] = api_base_url.strip()
-
-    return payload
+    return {"api_token": api_token, "api_base_url": api_url}
 
 
 def _recover_license_metadata(raw_data: str) -> Dict[str, Any]:
@@ -290,9 +273,8 @@ def _recover_license_metadata(raw_data: str) -> Dict[str, Any]:
 
     for key in (
         "license_credentials_path",
-        "license_account_id",
-        "license_product_token",
-        "license_api_base_url",
+        "license_api_token",
+        "license_api_url",
     ):
         value = _extract_string_field(raw_data, key)
         if value is not None:
@@ -329,7 +311,7 @@ def _ensure_payload_is_authenticated(payload: Dict[str, Any]) -> None:
         return
 
     # Como último recurso, exigimos metadados explícitos quando não há prova.
-    if payload.get("account_id") and payload.get("product_token"):
+    if payload.get("api_token") and (payload.get("api_base_url") or payload.get("api_url")):
         # Um pipeline que injeta variáveis diretamente deve estar protegido
         # externamente (por exemplo, GitHub Actions secrets). Ainda assim,
         # registamos uma mensagem descritiva para facilitar auditorias.
