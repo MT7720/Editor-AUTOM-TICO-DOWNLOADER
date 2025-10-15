@@ -147,7 +147,7 @@ class CustomLicenseDialog(ttk.Toplevel):
         self.bind("<Return>", self.on_ok)
         self.bind("<Escape>", self.on_cancel)
 
-        self._update_status(initial_status or "", "secondary")
+        self._update_status(initial_status, "secondary")
 
         parent_state = None
         parent_was_withdrawn = False
@@ -182,8 +182,13 @@ class CustomLicenseDialog(ttk.Toplevel):
         self.grab_set()
         self.wait_window(self)
 
-    def _update_status(self, message: str, style: str) -> None:
-        self.status_label.configure(text=message, bootstyle=style)
+    def _update_status(self, message: Optional[str], style: str) -> None:
+        cleaned_message = (message or "").strip()
+        if not cleaned_message:
+            self.status_label.configure(text="", bootstyle="secondary")
+            return
+
+        self.status_label.configure(text=cleaned_message, bootstyle=style)
 
     def _toggle_inputs(self, enabled: bool) -> None:
         state = NORMAL if enabled else DISABLED
@@ -469,11 +474,16 @@ def check_license(parent_window, activation_timeout=15):
         )
         initial_status_messages.append(str(exc))
 
+    if initial_status_messages:
+        print("Mensagens iniciais de status da licença:")
+        for message in initial_status_messages:
+            print(f"- {message}")
+
     dialog = CustomLicenseDialog(
         parent_window,
         fingerprint,
         activation_timeout=activation_timeout,
-        initial_status="\n".join(initial_status_messages) if initial_status_messages else None,
+        initial_status=None,
     )
 
     if dialog.cancelled or not dialog.result_data:

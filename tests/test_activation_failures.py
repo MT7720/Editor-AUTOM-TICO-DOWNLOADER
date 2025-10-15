@@ -11,10 +11,27 @@ from security.license_authority import issue_license_token
 def configure_revocation_cache(tmp_path, monkeypatch):
     revocation_file = tmp_path / "revocations.json"
     revocation_file.write_text(json.dumps({"revoked": []}))
-    monkeypatch.setenv(license_checker.LICENSE_REVOCATION_FILE_ENV_VAR, str(revocation_file))
-    license_checker._clear_revocation_cache()
+
+    env_var_name = getattr(
+        license_checker, "LICENSE_REVOCATION_FILE_ENV_VAR", "EDITOR_AUTOMATICO_LICENSE_REVOCATIONS"
+    )
+    monkeypatch.setenv(env_var_name, str(revocation_file))
+    if not hasattr(license_checker, "LICENSE_REVOCATION_FILE_ENV_VAR"):
+        monkeypatch.setattr(
+            license_checker, "LICENSE_REVOCATION_FILE_ENV_VAR", env_var_name, raising=False
+        )
+
+    clear_cache = getattr(license_checker, "_clear_revocation_cache", None)
+    if clear_cache is None:
+        def _noop():
+            return None
+
+        monkeypatch.setattr(license_checker, "_clear_revocation_cache", _noop, raising=False)
+        clear_cache = license_checker._clear_revocation_cache
+
+    clear_cache()
     yield revocation_file
-    license_checker._clear_revocation_cache()
+    clear_cache()
 
 
 def _valid_token(fingerprint: str, serial: str = "serial-1") -> str:
@@ -84,3 +101,45 @@ def test_validate_license_detects_revocation(configure_revocation_cache):
     assert error is None
     assert payload["meta"]["valid"] is False
     assert "revogad" in payload["meta"]["detail"].lower()
+
+
+def test_check_license_dialog_starts_blank_when_revalidation_fails(monkeypatch):
+    monkeypatch.setattr(license_checker, "get_machine_fingerprint", lambda: "fingerprint")
+    monkeypatch.setattr(
+        license_checker,
+        "load_license_data",
+        lambda fp: {"data": {"id": "license-id"}, "meta": {"key": "stored"}},
+    )
+
+    def fake_validate(license_id, fingerprint, license_key):
+        assert license_id == "license-id"
+        return None, "Falha na revalidação"
+
+    monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
+    monkeypatch.setattr(license_checker, "load_license_secrets", lambda: None)
+
+    logged_messages = []
+
+    def fake_print(*args, **kwargs):
+        logged_messages.append(" ".join(str(arg) for arg in args))
+
+    monkeypatch.setattr(license_checker, "print", fake_print, raising=False)
+
+    captured_initial_status = {}
+
+    class DummyDialog:
+        def __init__(self, parent, fingerprint, activation_timeout=None, initial_status=None):
+            captured_initial_status["value"] = initial_status
+            self.cancelled = True
+            self.result_data = None
+
+    monkeypatch.setattr(license_checker, "CustomLicenseDialog", DummyDialog)
+
+    success, payload = license_checker.check_license(parent_window=None)
+
+    assert success is False
+    assert payload is None
+    assert captured_initial_status.get("value") in (None, "")
+    assert any(
+        "Falha na revalidação" in message for message in logged_messages
+    ), "Expected revalidation failure message to be logged"
