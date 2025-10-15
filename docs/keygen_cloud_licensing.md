@@ -38,7 +38,9 @@ O módulo `security.secrets` procura automaticamente os dados de `account_id`,
 5. **Campos `license_account_id`, `license_product_token` e
    `license_api_base_url` em `video_editor_config.json`** – úteis para imagens de
    máquina virtual ou pacotes MSI que precisam transportar os segredos de forma
-   declarativa. Valores relativos em `license_credentials_path` continuam
+   declarativa. O campo `license_account_id` deve receber o UUID da conta do
+   Keygen (por exemplo, `9798e344-f107-4cfd-bcd3-af9b8e75d352`), nunca o UUID do
+   produto. Valores relativos em `license_credentials_path` continuam
    suportados para apontar para bundles externos.
 
 Escolha um único método e garanta que os ficheiros sejam protegidos durante a

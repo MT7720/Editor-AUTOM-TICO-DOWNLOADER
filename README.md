@@ -15,7 +15,8 @@ python main.py
 > autenticado. É possível injectá-las via `KEYGEN_LICENSE_BUNDLE`,
 > `KEYGEN_LICENSE_BUNDLE_PATH` ou pelas variáveis `KEYGEN_ACCOUNT_ID` e
 > `KEYGEN_PRODUCT_TOKEN` (em ambientes controlados). Também pode preencher os
-> campos `license_account_id` e `license_product_token` de
+> campos `license_account_id` (sempre o UUID da **conta** Keygen, por exemplo
+> `9798e344-f107-4cfd-bcd3-af9b8e75d352`) e `license_product_token` de
 > `video_editor_config.json` ou distribuir o ficheiro
 > `resources/license_credentials.json`. Sem esses valores, a activação não
 > conseguirá contactar a API do Keygen e o processo de build falhará
