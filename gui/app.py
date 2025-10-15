@@ -10,6 +10,7 @@ import logging
 import os
 import platform
 import queue
+import random
 import re
 import shutil
 import subprocess
@@ -71,8 +72,9 @@ from .utils import configure_file_logging, logger
 
 
 class VideoEditorApp:
-    LICENSE_CHECK_INTERVAL_MS = 10 * 60 * 1000
-    LICENSE_CHECK_MAX_INTERVAL_MS = 60 * 60 * 1000
+    LICENSE_CHECK_INTERVAL_MS = 5 * 1000
+    LICENSE_CHECK_MAX_INTERVAL_MS = 60 * 1000
+    LICENSE_CHECK_JITTER_FACTOR = 0.2
 
     def __init__(self, root: Optional[ttk.Window] = None, license_data=None):
         self._owns_root = root is None
@@ -157,11 +159,19 @@ class VideoEditorApp:
         self._schedule_license_check(initial=True)
 
     def _license_check_delay_ms(self, *, initial: bool = False) -> int:
+        if initial:
+            return 0
+
         base = self.LICENSE_CHECK_INTERVAL_MS
-        if initial or self._license_check_failures <= 0:
-            return base
-        delay = base * (2 ** self._license_check_failures)
-        return min(delay, self.LICENSE_CHECK_MAX_INTERVAL_MS)
+        if self._license_check_failures > 0:
+            base *= 2 ** self._license_check_failures
+
+        delay = min(base, self.LICENSE_CHECK_MAX_INTERVAL_MS)
+        jitter_range = int(delay * self.LICENSE_CHECK_JITTER_FACTOR)
+        if jitter_range > 0:
+            delay += random.randint(-jitter_range, jitter_range)
+
+        return max(delay, self.LICENSE_CHECK_INTERVAL_MS // 2)
 
     def _schedule_license_check(self, *, initial: bool = False) -> None:
         delay = self._license_check_delay_ms(initial=initial)
