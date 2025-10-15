@@ -22,6 +22,7 @@ import binascii
 import json
 import os
 import stat
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -205,17 +206,41 @@ def _load_bundle_from_disk(file_path: Path) -> Dict[str, Any]:
 def _load_config_data() -> tuple[Path, Dict[str, Any]]:
     """Carrega o ficheiro de configuração principal do editor."""
 
-    config_path = Path(__file__).resolve().parent.parent / "video_editor_config.json"
-    if not config_path.is_file():
-        return config_path, {}
+    candidates = _iter_config_candidates()
+    selected_path = candidates[0]
 
-    try:
-        with config_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except ValueError:
-        data = {}
+    for config_path in candidates:
+        if not config_path.is_file():
+            continue
 
-    return config_path, data
+        selected_path = config_path
+
+        try:
+            with config_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except ValueError:
+            data = {}
+
+        return selected_path, data
+
+    return selected_path, {}
+
+
+def _iter_config_candidates() -> tuple[Path, ...]:
+    """Determina caminhos prováveis para o ficheiro de configuração."""
+
+    base_path = Path(__file__).resolve().parent.parent
+
+    candidates: list[Path] = [base_path / "video_editor_config.json"]
+
+    cwd_candidate = Path.cwd() / "video_editor_config.json"
+    candidates.append(cwd_candidate)
+
+    meipass_path = getattr(sys, "_MEIPASS", None)
+    if meipass_path:
+        candidates.append(Path(meipass_path) / "video_editor_config.json")
+
+    return tuple(dict.fromkeys(candidates))
 
 
 def _extract_inline_credentials(config_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
