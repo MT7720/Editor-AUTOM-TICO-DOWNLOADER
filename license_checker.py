@@ -292,16 +292,18 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
     É efetuada uma requisição ``POST`` para o endpoint de validação remoto,
     enviando a impressão digital da máquina e, quando disponível, a chave da
     licença previamente armazenada. A função devolve sempre uma tupla
-    ``(payload, error)``: ``payload`` contém o JSON devolvido pelo serviço
-    quando a comunicação é bem-sucedida (mesmo que a licença seja considerada
-    inválida) e ``error`` traz uma mensagem normalizada quando ocorre algum
-    problema de rede ou quando a resposta não pode ser interpretada.
+    ``(payload, error, invalid_detail)``: ``payload`` contém o JSON devolvido
+    pelo serviço quando a comunicação é bem-sucedida (mesmo que a licença seja
+    considerada inválida); ``error`` traz uma mensagem normalizada quando ocorre
+    algum problema de rede ou quando a resposta não pode ser interpretada; e
+    ``invalid_detail`` descreve situações fatais em que a licença deixou de
+    existir (por exemplo, quando o serviço responde ``404`` ou "not found").
     """
 
     try:
         credentials = get_license_service_credentials()
     except RuntimeError as exc:
-        return None, str(exc)
+        return None, str(exc), None
 
     headers = {
         "Authorization": f"Bearer {credentials.product_token}",
@@ -319,23 +321,42 @@ def validate_license_with_id(license_id, fingerprint, license_key=None):
             timeout=10,
         )
     except requests.exceptions.RequestException:
-        return None, "Não foi possível contactar o servidor de licenças."
+        return None, "Não foi possível contactar o servidor de licenças.", None
 
     if response.status_code >= 400:
         detail = None
+        error_code = None
         try:
-            detail = response.json().get("errors", [{}])[0].get("detail")
+            error_info = response.json().get("errors", [{}])[0]
+            detail = error_info.get("detail")
+            error_code = error_info.get("code")
         except (ValueError, AttributeError, IndexError):
             detail = None
+            error_code = None
+
+        normalized_detail = (detail or "Licença não encontrada ou removida.").strip()
+        lowered_detail = normalized_detail.lower()
+        is_license_not_found = False
+        if error_code:
+            code_lower = str(error_code).lower()
+            is_license_not_found = code_lower in {"license_not_found"}
+        if not is_license_not_found and response.status_code == 404 and lowered_detail:
+            mentions_license = any(term in lowered_detail for term in ("license", "licença", "key", "chave"))
+            mentions_absence = any(term in lowered_detail for term in ("not found", "não encontrada", "não encontrado"))
+            is_license_not_found = mentions_license and mentions_absence
+
+        if is_license_not_found:
+            return None, None, normalized_detail
+
         message = detail or "Não foi possível validar a licença. O servidor rejeitou a solicitação."
-        return None, message
+        return None, message, None
 
     try:
         payload = response.json()
     except ValueError:
-        return None, "Resposta inválida do servidor de licenças."
+        return None, "Resposta inválida do servidor de licenças.", None
 
-    return payload, None
+    return payload, None, None
 
 def activate_new_license(license_key, fingerprint):
     """ Ativa uma nova licença usando o fluxo simples e funcional do script antigo. """
@@ -455,8 +476,12 @@ def check_license(parent_window, activation_timeout=15):
         license_id = stored_data.get("data", {}).get("id")
         license_key = stored_data.get("meta", {}).get("key") if isinstance(stored_data, dict) else None
         if license_id:
-            validation_result, error = validate_license_with_id(license_id, fingerprint, license_key)
-            if error:
+            validation_result, error, invalid_detail = validate_license_with_id(license_id, fingerprint, license_key)
+            if invalid_detail:
+                initial_status_messages.append(
+                    f"A licença armazenada deixou de ser válida: {invalid_detail}"
+                )
+            elif error:
                 initial_status_messages.append(
                     f"Não foi possível revalidar a licença existente: {error}"
                 )

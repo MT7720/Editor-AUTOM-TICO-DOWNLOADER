@@ -1,10 +1,11 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-import license_checker
 import pytest
 
 from security.license_authority import issue_license_token
+from gui.app import VideoEditorApp
+import license_checker
 
 
 @pytest.fixture(autouse=True)
@@ -86,19 +87,21 @@ def test_validate_license_detects_revocation(configure_revocation_cache):
     revocation_file = configure_revocation_cache
     token = _valid_token("fingerprint", serial="serial-42")
 
-    payload, error = license_checker.validate_license_with_id(
+    payload, error, invalid_detail = license_checker.validate_license_with_id(
         "cust-1", "fingerprint", token
     )
     assert error is None
+    assert invalid_detail is None
     assert payload["meta"]["valid"] is True
 
     revocation_file.write_text(json.dumps({"revoked": ["serial-42"]}))
     license_checker._clear_revocation_cache()
 
-    payload, error = license_checker.validate_license_with_id(
+    payload, error, invalid_detail = license_checker.validate_license_with_id(
         "cust-1", "fingerprint", token
     )
     assert error is None
+    assert invalid_detail is None
     assert payload["meta"]["valid"] is False
     assert "revogad" in payload["meta"]["detail"].lower()
 
@@ -113,7 +116,7 @@ def test_check_license_dialog_starts_blank_when_revalidation_fails(monkeypatch):
 
     def fake_validate(license_id, fingerprint, license_key):
         assert license_id == "license-id"
-        return None, "Falha na revalidação"
+        return None, "Falha na revalidação", None
 
     monkeypatch.setattr(license_checker, "validate_license_with_id", fake_validate)
     monkeypatch.setattr(license_checker, "load_license_secrets", lambda: None)
@@ -143,3 +146,47 @@ def test_check_license_dialog_starts_blank_when_revalidation_fails(monkeypatch):
     assert any(
         "Falha na revalidação" in message for message in logged_messages
     ), "Expected revalidation failure message to be logged"
+
+
+def test_license_not_found_triggers_termination(monkeypatch):
+    class DummyRoot:
+        def __init__(self):
+            self.after_calls = []
+
+        def after(self, delay, callback=None, *args):
+            self.after_calls.append((delay, callback, args))
+            return "job"
+
+        def after_cancel(self, job_id):  # pragma: no cover - defensive
+            self.after_calls.append(("cancel", job_id))
+
+    monkeypatch.setattr(license_checker, "get_machine_fingerprint", lambda: "fingerprint")
+    monkeypatch.setattr(
+        license_checker,
+        "validate_license_with_id",
+        lambda *args, **kwargs: (None, None, "Licença não encontrada"),
+    )
+
+    app = VideoEditorApp.__new__(VideoEditorApp)
+    app.root = DummyRoot()
+    app._license_id = "license-123"
+    app._license_fingerprint = "fingerprint"
+    app._license_check_job = None
+    app._license_check_failures = 0
+    app._license_termination_initiated = False
+    app.license_data = {"meta": {"key": "stored-key"}}
+
+    termination = {}
+
+    def fake_handle(self, detail):
+        termination["detail"] = detail
+
+    import types
+
+    app._handle_invalid_license = types.MethodType(fake_handle, app)
+
+    app._run_license_check()
+
+    assert termination["detail"] == "Licença não encontrada"
+    assert app.root.after_calls == []
+    assert app._license_check_failures == 0

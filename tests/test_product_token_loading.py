@@ -184,10 +184,11 @@ def test_validate_license_with_missing_credentials(monkeypatch):
     monkeypatch.setattr(module, "load_license_secrets", _raise_secret_loader_error)
     module.get_license_service_credentials.cache_clear()
 
-    payload, error = module.validate_license_with_id("any", "fingerprint")
+    payload, error, invalid_detail = module.validate_license_with_id("any", "fingerprint")
 
     assert payload is None
     assert "credenciais" in error.lower()
+    assert invalid_detail is None
 
 
 def test_activate_new_license_with_missing_credentials(monkeypatch):
