@@ -70,6 +70,8 @@ def test_load_license_secrets_from_local_installation(monkeypatch, tmp_path):
     if os.name != "nt":
         bundle_path.chmod(0o600)
 
+    config_path = tmp_path / "video_editor_config.json"
+
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
     monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
     monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
@@ -78,6 +80,11 @@ def test_load_license_secrets_from_local_installation(monkeypatch, tmp_path):
         secrets,
         "_iter_local_bundle_candidates",
         lambda: (bundle_path,),
+    )
+    monkeypatch.setattr(
+        secrets,
+        "_load_config_data",
+        lambda: (config_path, {}),
     )
 
     credentials = secrets.load_license_secrets()
@@ -103,6 +110,35 @@ def test_load_license_secrets_from_inline_config(monkeypatch, tmp_path):
         return tmp_path / "video_editor_config.json", config_data
 
     monkeypatch.setattr(secrets, "_load_config_data", fake_load_config_data)
+
+    credentials = secrets.load_license_secrets()
+
+    assert credentials.account_id == "inline-account"
+    assert credentials.product_token == "inline-token"
+    assert credentials.api_base_url == "https://example.test/accounts/inline-account"
+
+
+def test_load_license_secrets_with_minor_json_error(monkeypatch, tmp_path):
+    # Falta uma vírgula entre os campos para simular um ficheiro editado manualmente.
+    raw_config = """{
+  \"license_account_id\": \"inline-account\"
+  \"license_product_token\": \"inline-token\",
+  \"license_api_base_url\": \"https://example.test/accounts/inline-account\"
+}"""
+
+    config_path = tmp_path / "video_editor_config.json"
+    config_path.write_text(raw_config, encoding="utf-8")
+
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE", raising=False)
+    monkeypatch.delenv("KEYGEN_LICENSE_BUNDLE_PATH", raising=False)
+    monkeypatch.delenv("KEYGEN_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KEYGEN_PRODUCT_TOKEN", raising=False)
+
+    monkeypatch.setattr(
+        secrets,
+        "_iter_config_candidates",
+        lambda: (config_path,),
+    )
 
     credentials = secrets.load_license_secrets()
 
