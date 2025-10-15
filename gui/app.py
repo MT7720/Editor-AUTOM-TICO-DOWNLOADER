@@ -239,11 +239,63 @@ class VideoEditorApp:
         if self._license_termination_initiated:
             return
         self._license_termination_initiated = True
-        Messagebox.show_warning(detail, "Licença inválida", parent=self.root)
+        user_message = "Não foi possível validar sua licença. Verifique a chave ou contacte o suporte."
+        logger.error("Encerrando aplicação devido à licença inválida: %s", detail)
+        self._show_invalid_license_dialog(user_message)
         try:
             self.root.destroy()
         finally:
             sys.exit(1)
+
+    def _show_invalid_license_dialog(self, message: str) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Licença inválida")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        icon_photo = None
+        try:
+            icon_image = Image.open(ICON_FILE)
+            icon_photo = ImageTk.PhotoImage(icon_image)
+            dialog.iconphoto(True, icon_photo)
+        except Exception as exc:  # pragma: no cover - fall back to default handling
+            logger.debug("Falha ao carregar ícone personalizado do diálogo: %s", exc)
+            try:
+                dialog.iconbitmap(ICON_FILE)
+            except Exception:
+                logger.debug("Falha ao aplicar ícone .ico diretamente ao diálogo.")
+
+        dialog.columnconfigure(0, weight=1)
+        frame = ttk.Frame(dialog, padding=20)
+        frame.grid(row=0, column=0, sticky="nsew")
+
+        message_label = ttk.Label(frame, text=message, wraplength=380, anchor="center", justify="center")
+        message_label.grid(row=0, column=0, pady=(0, 15))
+
+        button = ttk.Button(frame, text="OK", command=dialog.destroy)
+        button.grid(row=1, column=0)
+
+        if icon_photo is not None:
+            dialog.icon_photo_ref = icon_photo  # type: ignore[attr-defined]
+
+        dialog.update_idletasks()
+        width = dialog.winfo_reqwidth()
+        height = dialog.winfo_reqheight()
+        try:
+            root_x = self.root.winfo_rootx()
+            root_y = self.root.winfo_rooty()
+            root_w = self.root.winfo_width()
+            root_h = self.root.winfo_height()
+            pos_x = root_x + max((root_w - width) // 2, 0)
+            pos_y = root_y + max((root_h - height) // 2, 0)
+        except Exception:
+            screen_w = dialog.winfo_screenwidth()
+            screen_h = dialog.winfo_screenheight()
+            pos_x = max((screen_w - width) // 2, 0)
+            pos_y = max((screen_h - height) // 2, 0)
+        dialog.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
+        self.root.wait_window(dialog)
 
     def _create_widgets(self):
         self.root.columnconfigure(0, weight=1)
